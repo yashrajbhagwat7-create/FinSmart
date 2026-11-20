@@ -383,10 +383,11 @@ function attachSurveyListeners(container, currentStep) {
   // Submit button
   const btnSubmit = container.querySelector('#btn-survey-submit');
   if (btnSubmit) {
-    btnSubmit.addEventListener('click', () => {
+    btnSubmit.addEventListener('click', async (e) => {
+      e.preventDefault();
       if (validateCurrentStep(currentStep)) {
         saveCurrentStepInputs(currentStep);
-        submitSurvey();
+        await submitSurvey();
       }
     });
   }
@@ -542,19 +543,33 @@ async function submitSurvey() {
     if (window.lucide) window.lucide.createIcons();
   }
 
-  await state.saveUserProfile(profile);
+  try {
+    const cloudRes = await state.saveUserProfile(profile);
 
-  // Trigger celebration
-  if (window.confetti && scoreResults.overallScore >= 60) {
-    window.confetti({
-      particleCount: 100,
-      spread: 70,
-      origin: { y: 0.6 }
-    });
+    // Trigger celebration
+    if (window.confetti && scoreResults.overallScore >= 60) {
+      window.confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+    }
+
+    if (cloudRes?.isCloud) {
+      showToast('Assessment submitted & recorded in Supabase in real time!', 'success');
+    } else {
+      showToast(`Assessment saved locally (${cloudRes?.error || 'Local mode'})`, 'warning');
+    }
+
+    // Navigate to results
+    window.location.hash = '#results';
+  } catch (err) {
+    console.error('Survey submission error:', err);
+    showToast(`Submission failed: ${err.message}`, 'error');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = `<i data-lucide="check-circle-2" class="w-5 h-5"></i> Submit Survey & View Score`;
+      if (window.lucide) window.lucide.createIcons();
+    }
   }
-
-  showToast('Assessment recorded and synced to database!', 'success');
-
-  // Navigate to results
-  window.location.hash = '#results';
 }

@@ -5,7 +5,7 @@
  * - Cloud user authentication and profiles
  * - Standard and AI-generated quiz attempt tracking
  * - Direct, native HTTP fetch to PostgREST API (zero CDN/script dependencies)
- * - Automatic graceful fallback to secure local persistence when credentials are not yet entered.
+ * - Automatic graceful fallback to secure local persistence when offline.
  */
 
 const STORAGE_KEY_CONFIG = 'finsmart_supabase_config_v1';
@@ -28,17 +28,26 @@ const DEFAULT_SUPABASE_CONFIG = {
 class SupabaseService {
   constructor() {
     this.client = null;
-    this.status = 'connected'; // default connected to cluster
+    this.status = 'connected';
     this.lastError = null;
     this.listeners = [];
     this.init();
   }
 
   init() {
+    // Purge any invalid or cleared config keys so default production database is ALWAYS active
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.cleared || !parsed.url || !parsed.anonKey || !parsed.url.includes('supabase.co')) {
+          localStorage.removeItem(STORAGE_KEY_CONFIG);
+        }
+      }
+    } catch (e) {}
+
     const config = this.getConfig();
-    if (config.url && config.anonKey) {
-      this.connect(config.url, config.anonKey);
-    }
+    this.connect(config.url, config.anonKey);
   }
 
   getConfig() {
@@ -46,10 +55,7 @@ class SupabaseService {
       const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.cleared) {
-          return { url: '', anonKey: '' };
-        }
-        if (parsed.url && parsed.anonKey && parsed.url.includes('supabase.co')) {
+        if (parsed.url && parsed.anonKey && typeof parsed.url === 'string' && parsed.url.includes('supabase.co')) {
           return parsed;
         }
       }
@@ -62,27 +68,18 @@ class SupabaseService {
   saveConfig(url, anonKey) {
     const cleanUrl = (url || '').trim().replace(/\/$/, '');
     const cleanKey = (anonKey || '').trim();
-    if (cleanUrl && cleanKey) {
+    if (cleanUrl && cleanKey && cleanUrl.includes('supabase.co')) {
       localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify({ url: cleanUrl, anonKey: cleanKey }));
       return this.connect(cleanUrl, cleanKey);
     } else {
-      localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify({ cleared: true, url: '', anonKey: '' }));
-      this.client = null;
-      this.status = 'not_configured';
-      this.notifyListeners();
-      return Promise.resolve({ success: true, message: 'Supabase configuration cleared. Using local database.' });
+      localStorage.removeItem(STORAGE_KEY_CONFIG);
+      return this.connect(DEFAULT_SUPABASE_CONFIG.url, DEFAULT_SUPABASE_CONFIG.anonKey);
     }
   }
 
   async connect(url, anonKey) {
-    const cleanUrl = (url || '').trim().replace(/\/$/, '');
-    const cleanKey = (anonKey || '').trim();
-
-    if (!cleanUrl || !cleanKey) {
-      this.status = 'not_configured';
-      this.notifyListeners();
-      return { success: false, error: 'Missing Supabase URL or Anon Key' };
-    }
+    const cleanUrl = (url || DEFAULT_SUPABASE_CONFIG.url).trim().replace(/\/$/, '');
+    const cleanKey = (anonKey || DEFAULT_SUPABASE_CONFIG.anonKey).trim();
 
     try {
       if (window.supabase) {
@@ -141,21 +138,20 @@ class SupabaseService {
   getClient() {
     if (!this.client && window.supabase) {
       const config = this.getConfig();
-      if (config.url && config.anonKey) {
-        this.client = window.supabase.createClient(config.url, config.anonKey, {
-          auth: {
-            persistSession: true,
-            autoRefreshToken: true
-          }
-        });
-      }
+      const targetUrl = config.url || DEFAULT_SUPABASE_CONFIG.url;
+      const targetKey = config.anonKey || DEFAULT_SUPABASE_CONFIG.anonKey;
+      this.client = window.supabase.createClient(targetUrl, targetKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true
+        }
+      });
     }
     return this.client;
   }
 
   isConfigured() {
-    const config = this.getConfig();
-    return Boolean(config && config.url && config.anonKey);
+    return true; // Production credentials are permanently configured
   }
 
   getStatus() {
@@ -242,34 +238,38 @@ class SupabaseService {
       created_at: new Date().toISOString()
     };
 
-    // 1. Primary path: Direct Native HTTP Fetch to Supabase REST endpoint
+    // Guaranteed target credentials (falls back to DEFAULT_SUPABASE_CONFIG)
     const config = this.getConfig();
-    if (config.url && config.anonKey) {
-      try {
-        const cleanUrl = config.url.replace(/\/$/, '');
-        const res = await fetch(`${cleanUrl}/rest/v1/survey_responses`, {
-          method: 'POST',
-          headers: {
-            'apikey': config.anonKey,
-            'Authorization': `Bearer ${config.anonKey}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation'
-          },
-          body: JSON.stringify(record)
-        });
+    const targetUrl = (config.url || DEFAULT_SUPABASE_CONFIG.url).replace(/\/$/, '');
+    const targetKey = config.anonKey || DEFAULT_SUPABASE_CONFIG.anonKey;
 
-        if (res.ok) {
-          const inserted = await res.json().catch(() => []);
-          const savedRow = Array.isArray(inserted) ? inserted[0] : inserted;
-          console.log('✅ Real-time survey response recorded to Supabase PostgreSQL:', savedRow);
-          return { success: true, data: savedRow, isCloud: true };
-        } else {
-          const errJson = await res.json().catch(() => ({}));
-          console.warn('Supabase REST POST returned non-ok status:', res.status, errJson);
-        }
-      } catch (fetchErr) {
-        console.warn('Direct fetch to Supabase failed, trying client fallback:', fetchErr);
+    // 1. Primary path: Direct Native HTTP Fetch to Supabase REST endpoint
+    try {
+      console.log(`[SupabaseService] Pushing survey to ${targetUrl}/rest/v1/survey_responses for ${record.session_id}`);
+      const res = await fetch(`${targetUrl}/rest/v1/survey_responses`, {
+        method: 'POST',
+        headers: {
+          'apikey': targetKey,
+          'Authorization': `Bearer ${targetKey}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(record)
+      });
+
+      if (res.ok) {
+        const inserted = await res.json().catch(() => []);
+        const savedRow = Array.isArray(inserted) ? inserted[0] : inserted;
+        console.log('✅ Real-time survey response recorded to Supabase PostgreSQL:', savedRow);
+        return { success: true, data: savedRow, isCloud: true };
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        const errMsg = errJson.message || `HTTP ${res.status}`;
+        console.error('❌ Supabase REST POST error:', res.status, errMsg, errJson);
+        return { success: false, error: errMsg, isCloud: false };
       }
+    } catch (fetchErr) {
+      console.warn('[SupabaseService] Direct fetch failed, trying client fallback:', fetchErr);
     }
 
     // 2. Secondary fallback: supabase-js client if loaded
@@ -297,50 +297,48 @@ class SupabaseService {
     if (!email) return { success: false, data: null };
     const cleanEmail = email.toLowerCase().trim();
     const config = this.getConfig();
+    const targetUrl = (config.url || DEFAULT_SUPABASE_CONFIG.url).replace(/\/$/, '');
+    const targetKey = config.anonKey || DEFAULT_SUPABASE_CONFIG.anonKey;
 
     // 1. Primary path: Direct Native HTTP Fetch to Supabase REST endpoint
-    if (config.url && config.anonKey) {
-      try {
-        const cleanUrl = config.url.replace(/\/$/, '');
-        
-        // Match by session_id = cleanEmail
-        const res = await fetch(
-          `${cleanUrl}/rest/v1/survey_responses?session_id=eq.${encodeURIComponent(cleanEmail)}&order=created_at.desc&limit=1`,
-          {
-            headers: {
-              'apikey': config.anonKey,
-              'Authorization': `Bearer ${config.anonKey}`
-            }
-          }
-        );
-
-        if (res.ok) {
-          const rows = await res.json().catch(() => []);
-          if (Array.isArray(rows) && rows.length > 0) {
-            return { success: true, data: rows[0] };
+    try {
+      // Match by session_id = cleanEmail
+      const res = await fetch(
+        `${targetUrl}/rest/v1/survey_responses?session_id=eq.${encodeURIComponent(cleanEmail)}&order=created_at.desc&limit=1`,
+        {
+          headers: {
+            'apikey': targetKey,
+            'Authorization': `Bearer ${targetKey}`
           }
         }
+      );
 
-        // Secondary check: match raw_answers->>user_email
-        const resRaw = await fetch(
-          `${cleanUrl}/rest/v1/survey_responses?raw_answers->>user_email=eq.${encodeURIComponent(cleanEmail)}&order=created_at.desc&limit=1`,
-          {
-            headers: {
-              'apikey': config.anonKey,
-              'Authorization': `Bearer ${config.anonKey}`
-            }
-          }
-        );
-
-        if (resRaw.ok) {
-          const rowsRaw = await resRaw.json().catch(() => []);
-          if (Array.isArray(rowsRaw) && rowsRaw.length > 0) {
-            return { success: true, data: rowsRaw[0] };
-          }
+      if (res.ok) {
+        const rows = await res.json().catch(() => []);
+        if (Array.isArray(rows) && rows.length > 0) {
+          return { success: true, data: rows[0] };
         }
-      } catch (err) {
-        console.warn('Direct fetch of user survey from Supabase failed:', err);
       }
+
+      // Secondary check: match raw_answers->>user_email
+      const resRaw = await fetch(
+        `${targetUrl}/rest/v1/survey_responses?raw_answers->>user_email=eq.${encodeURIComponent(cleanEmail)}&order=created_at.desc&limit=1`,
+        {
+          headers: {
+            'apikey': targetKey,
+            'Authorization': `Bearer ${targetKey}`
+          }
+        }
+      );
+
+      if (resRaw.ok) {
+        const rowsRaw = await resRaw.json().catch(() => []);
+        if (Array.isArray(rowsRaw) && rowsRaw.length > 0) {
+          return { success: true, data: rowsRaw[0] };
+        }
+      }
+    } catch (err) {
+      console.warn('Direct fetch of user survey from Supabase failed:', err);
     }
 
     // 2. Client fallback
@@ -370,11 +368,9 @@ class SupabaseService {
       return { success: false, count: 0, error: 'No records to sync' };
     }
     const config = this.getConfig();
-    if (!config.url || !config.anonKey) {
-      return { success: false, count: 0, error: 'Database credentials not configured' };
-    }
+    const targetUrl = (config.url || DEFAULT_SUPABASE_CONFIG.url).replace(/\/$/, '');
+    const targetKey = config.anonKey || DEFAULT_SUPABASE_CONFIG.anonKey;
 
-    const cleanUrl = config.url.replace(/\/$/, '');
     let synced = 0;
 
     for (const r of records) {
@@ -420,11 +416,11 @@ class SupabaseService {
           created_at: r.created_at || new Date().toISOString()
         };
 
-        const res = await fetch(`${cleanUrl}/rest/v1/survey_responses`, {
+        const res = await fetch(`${targetUrl}/rest/v1/survey_responses`, {
           method: 'POST',
           headers: {
-            'apikey': config.anonKey,
-            'Authorization': `Bearer ${config.anonKey}`,
+            'apikey': targetKey,
+            'Authorization': `Bearer ${targetKey}`,
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
           },
@@ -441,28 +437,28 @@ class SupabaseService {
 
   async fetchSurveyResponses(limit = 100) {
     const config = this.getConfig();
-    if (config.url && config.anonKey) {
-      try {
-        const cleanUrl = config.url.replace(/\/$/, '');
-        const res = await fetch(
-          `${cleanUrl}/rest/v1/survey_responses?select=*&order=created_at.desc&limit=${limit}`,
-          {
-            headers: {
-              'apikey': config.anonKey,
-              'Authorization': `Bearer ${config.anonKey}`
-            }
-          }
-        );
+    const targetUrl = (config.url || DEFAULT_SUPABASE_CONFIG.url).replace(/\/$/, '');
+    const targetKey = config.anonKey || DEFAULT_SUPABASE_CONFIG.anonKey;
 
-        if (res.ok) {
-          const data = await res.json().catch(() => []);
-          if (Array.isArray(data)) {
-            return { success: true, data, isCloud: true };
+    try {
+      const res = await fetch(
+        `${targetUrl}/rest/v1/survey_responses?select=*&order=created_at.desc&limit=${limit}`,
+        {
+          headers: {
+            'apikey': targetKey,
+            'Authorization': `Bearer ${targetKey}`
           }
         }
-      } catch (err) {
-        console.warn('Direct fetch of survey responses failed:', err);
+      );
+
+      if (res.ok) {
+        const data = await res.json().catch(() => []);
+        if (Array.isArray(data)) {
+          return { success: true, data, isCloud: true };
+        }
       }
+    } catch (err) {
+      console.warn('Direct fetch of survey responses failed:', err);
     }
 
     const client = this.getClient();
@@ -499,21 +495,21 @@ class SupabaseService {
     };
 
     const config = this.getConfig();
-    if (config.url && config.anonKey) {
-      try {
-        const cleanUrl = config.url.replace(/\/$/, '');
-        await fetch(`${cleanUrl}/rest/v1/quiz_attempts`, {
-          method: 'POST',
-          headers: {
-            'apikey': config.anonKey,
-            'Authorization': `Bearer ${config.anonKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        });
-        return;
-      } catch (e) {}
-    }
+    const targetUrl = (config.url || DEFAULT_SUPABASE_CONFIG.url).replace(/\/$/, '');
+    const targetKey = config.anonKey || DEFAULT_SUPABASE_CONFIG.anonKey;
+
+    try {
+      await fetch(`${targetUrl}/rest/v1/quiz_attempts`, {
+        method: 'POST',
+        headers: {
+          'apikey': targetKey,
+          'Authorization': `Bearer ${targetKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      return;
+    } catch (e) {}
 
     if (this.isConfigured() && this.client) {
       try {
@@ -554,7 +550,6 @@ class SupabaseService {
 
   async registerUser({ fullName, email, password, role = 'learner', demographics = {} }) {
     const cleanEmail = email.toLowerCase().trim();
-    // Enforce role: Only the platform administrator receives 'admin'; standard visitors receive 'learner'
     const isOwner = cleanEmail === ADMIN_EMAIL;
     const effectiveRole = isOwner ? 'admin' : 'learner';
     
@@ -606,7 +601,6 @@ class SupabaseService {
         return { success: true, user: userObj, message: 'Account created successfully in cloud!' };
       } catch (err) {
         console.warn('Supabase cloud signup error, falling back to local secure auth:', err.message);
-        // continue to local registration
       }
     }
 
@@ -694,8 +688,6 @@ class SupabaseService {
     let user = users.find(u => u.email.toLowerCase() === cleanEmail);
 
     if (!user) {
-      // If the administrator is logging in locally for the first time without prior registration,
-      // bootstrap the admin account securely with the credentials supplied
       if (isOwner && password && password.length >= 6) {
         const salt = Math.random().toString(36).substring(2, 15);
         const passwordHash = await this.hashPassword(password, salt);

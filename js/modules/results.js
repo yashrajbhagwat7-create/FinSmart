@@ -102,7 +102,7 @@ export async function renderResultsDashboard(container) {
           <button id="btn-print-report" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-medium text-sm shadow-sm transition">
             <i data-lucide="printer" class="w-4 h-4"></i> Print / Save Report
           </button>
-          <a href="#survey" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-navy-900 hover:bg-navy-800 text-white font-medium text-sm shadow-sm transition">
+          <a href="#survey" id="btn-retake-survey" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-navy-900 hover:bg-navy-800 text-white font-medium text-sm shadow-sm transition">
             <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Retake Survey
           </a>
         </div>
@@ -380,4 +380,9 @@ export async function renderResultsDashboard(container) {
       window.print();
     });
   }
+
+  // Attach retake button to reset survey wizard
+  container.querySelector('#btn-retake-survey')?.addEventListener('click', () => {
+    state.clearSurveyProgress();
+  });
 }

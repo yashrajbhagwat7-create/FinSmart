@@ -132,7 +132,8 @@ export function renderLoginPage(container) {
   });
 
   // Handle Submit
-  form?.addEventListener('submit', async () => {
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
     const email = emailInput.value.trim();
     const pass = passInput.value;
 
@@ -337,7 +338,8 @@ export function renderRegisterPage(container) {
     }
   });
 
-  form.addEventListener('submit', async () => {
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
     errorBox.classList.add('hidden');
 
     const name = nameInput.value.trim();
@@ -516,7 +518,7 @@ export async function renderProfilePage(container) {
               <a href="#results" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-sm transition">
                 <i data-lucide="gauge" class="w-4 h-4"></i> View Full Radar & Breakdown
               </a>
-              <a href="#survey" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs sm:text-sm transition">
+              <a href="#survey" id="btn-profile-retake-survey" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs sm:text-sm transition">
                 <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Retake Assessment
               </a>
             </div>
@@ -599,6 +601,10 @@ export async function renderProfilePage(container) {
   if (window.lucide) window.lucide.createIcons();
 
   // Attach handlers
+  container.querySelector('#btn-profile-retake-survey')?.addEventListener('click', () => {
+    state.clearSurveyProgress();
+  });
+
   container.querySelector('#btn-profile-logout')?.addEventListener('click', () => {
     supabaseService.logoutUser();
     state.setCurrentUser(null);

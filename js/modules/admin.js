@@ -401,7 +401,8 @@ function renderAdminLogin(container) {
   const errEl = container.querySelector('#login-error');
   const submitBtn = container.querySelector('#btn-admin-submit');
 
-  form?.addEventListener('submit', async () => {
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
     if (errEl) errEl.classList.add('hidden');
     const email = emailInput?.value.trim().toLowerCase() || '';
     const password = passInput?.value || '';
