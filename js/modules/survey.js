@@ -556,9 +556,9 @@ async function submitSurvey() {
     }
 
     if (cloudRes?.isCloud) {
-      showToast(`Survey successfully saved to Supabase Cloud! (ID: #${cloudRes.data?.id?.substring(0, 8)})`, 'success');
+      showToast('Assessment submitted and saved to cloud database!', 'success');
     } else {
-      showToast(`Cloud sync alert: ${cloudRes?.error || 'Offline mode'}. Saved locally.`, 'warning');
+      showToast('Assessment saved locally.', 'info');
     }
 
     // Navigate to results

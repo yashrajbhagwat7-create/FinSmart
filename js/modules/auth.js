@@ -522,15 +522,6 @@ export async function renderProfilePage(container) {
                 <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Retake Assessment
               </a>
             </div>
-
-            <div class="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-              <span class="inline-flex items-center gap-1.5 text-emerald-700 font-semibold">
-                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Supabase Cloud Sync Active
-              </span>
-              <button id="btn-profile-sync-cloud" class="text-xs text-slate-600 hover:text-emerald-700 font-medium inline-flex items-center gap-1">
-                <i data-lucide="refresh-cw" class="w-3 h-3"></i> Sync with Cloud
-              </button>
-            </div>
           ` : `
             <div class="py-8 text-center">
               <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-3">
@@ -540,14 +531,9 @@ export async function renderProfilePage(container) {
               <p class="text-xs text-slate-600 max-w-sm mx-auto mt-1 mb-5">
                 Take the 5-minute diagnostic survey to establish your financial competency baseline.
               </p>
-              <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
-                <a href="#survey" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition">
-                  <i data-lucide="sparkles" class="w-4 h-4"></i> Start Survey Now
-                </a>
-                <button id="btn-profile-pull-cloud" class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition">
-                  <i data-lucide="cloud-download" class="w-4 h-4 text-emerald-600"></i> Pull Survey from Supabase
-                </button>
-              </div>
+              <a href="#survey" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition">
+                <i data-lucide="sparkles" class="w-4 h-4"></i> Start Survey Now
+              </a>
             </div>
           `}
         </div>
@@ -624,47 +610,6 @@ export async function renderProfilePage(container) {
     state.setCurrentUser(null);
     showToast('Signed out successfully.', 'info');
     navigateTo('home');
-  });
-
-  // Cloud sync buttons
-  container.querySelector('#btn-profile-sync-cloud')?.addEventListener('click', async () => {
-    const btn = container.querySelector('#btn-profile-sync-cloud');
-    if (btn) btn.innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> Syncing...`;
-    if (window.lucide) window.lucide.createIcons();
-
-    try {
-      if (state.userProfile) {
-        const cloudRes = await state.saveUserProfile(state.userProfile);
-        if (cloudRes?.isCloud) {
-          showToast(`Synced profile with Supabase! ID: #${cloudRes.data?.id?.substring(0, 8)}`, 'success');
-        } else {
-          showToast('Profile saved in database repository.', 'info');
-        }
-      }
-    } catch (e) {
-      showToast(`Sync failed: ${e.message}`, 'error');
-    } finally {
-      renderProfilePage(container);
-    }
-  });
-
-  container.querySelector('#btn-profile-pull-cloud')?.addEventListener('click', async () => {
-    const btn = container.querySelector('#btn-profile-pull-cloud');
-    if (btn) btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Checking Supabase...`;
-    if (window.lucide) window.lucide.createIcons();
-
-    try {
-      await state.fetchCloudSurveyForCurrentUser(user);
-      if (state.userProfile) {
-        showToast(`Survey retrieved from Supabase! Score: ${state.userProfile.overallScore}%`, 'success');
-      } else {
-        showToast(`No survey response found in Supabase for ${user.email}.`, 'info');
-      }
-    } catch (e) {
-      showToast(`Error fetching from Supabase: ${e.message}`, 'error');
-    } finally {
-      renderProfilePage(container);
-    }
   });
 }
 
