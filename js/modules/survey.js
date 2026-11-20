@@ -524,7 +524,7 @@ function validateCurrentStep(step) {
   return isValid;
 }
 
-function submitSurvey() {
+async function submitSurvey() {
   const answers = state.surveyProgress.answers;
   const demographics = state.surveyProgress.demographics;
 
@@ -535,7 +535,14 @@ function submitSurvey() {
     ...scoreResults
   };
 
-  state.saveUserProfile(profile);
+  const submitBtn = document.querySelector('#btn-survey-submit');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Recording & Syncing...`;
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  await state.saveUserProfile(profile);
 
   // Trigger celebration
   if (window.confetti && scoreResults.overallScore >= 60) {
@@ -546,7 +553,7 @@ function submitSurvey() {
     });
   }
 
-  showToast('Your responses have been recorded successfully!', 'success');
+  showToast('Assessment recorded and synced to database!', 'success');
 
   // Navigate to results
   window.location.hash = '#results';

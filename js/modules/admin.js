@@ -93,6 +93,9 @@ export function renderAdminDashboard(container) {
 
         <div class="flex items-center gap-2">
           ${isCloud ? `
+            <button id="btn-sync-local-to-cloud" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition">
+              <i data-lucide="cloud-upload" class="w-3.5 h-3.5"></i> Push Local to Cloud
+            </button>
             <button id="btn-fetch-cloud" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition">
               <i data-lucide="cloud-download" class="w-3.5 h-3.5"></i> Fetch Cloud Records
             </button>
@@ -193,6 +196,52 @@ export function renderAdminDashboard(container) {
   // Supabase Database Settings
   container.querySelector('#btn-admin-db-settings')?.addEventListener('click', () => {
     openSupabaseConfigModal();
+  });
+
+  // Push Local Records to Supabase Cloud
+  container.querySelector('#btn-sync-local-to-cloud')?.addEventListener('click', async () => {
+    const syncBtn = container.querySelector('#btn-sync-local-to-cloud');
+    if (syncBtn) syncBtn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Syncing...`;
+    if (window.lucide) window.lucide.createIcons();
+
+    // Collect all local respondent records
+    const localRecords = (state.researchData || []).filter(r => r.id && String(r.id).startsWith('user_'));
+    if (state.userProfile) {
+      localRecords.unshift({
+        age_group: state.userProfile.demographics?.age_group,
+        education: state.userProfile.demographics?.education,
+        occupation: state.userProfile.demographics?.occupation,
+        income_range: state.userProfile.demographics?.income_range,
+        location: state.userProfile.demographics?.location,
+        knowledge_score: state.userProfile.categoryScores?.knowledge || 0,
+        saving_score: state.userProfile.categoryScores?.saving || 0,
+        investment_score: state.userProfile.categoryScores?.investing || 0,
+        debt_score: state.userProfile.categoryScores?.debt || 0,
+        insurance_score: state.userProfile.categoryScores?.insurance || 0,
+        overall_score: state.userProfile.overallScore || 0,
+        literacy_level: state.userProfile.literacyLevel || 'Developing',
+        budgetsRegularly: state.userProfile.categoryScores?.saving >= 50,
+        savesRegularly: state.userProfile.categoryScores?.saving >= 50,
+        invests: state.userProfile.categoryScores?.investing >= 50,
+        hasEmergencyFund: state.userProfile.categoryScores?.saving >= 65,
+        hasInsurance: state.userProfile.categoryScores?.insurance >= 60,
+        raw_answers: state.userProfile.answers || {}
+      });
+    }
+
+    if (localRecords.length === 0) {
+      renderAdminDashboard(container);
+      showToast('No locally recorded survey submissions found to push.', 'info');
+      return;
+    }
+
+    const res = await supabaseService.syncLocalRecordsToCloud(localRecords);
+    renderAdminDashboard(container);
+    if (res.success && res.count > 0) {
+      showToast(`Pushed ${res.count} survey submissions to Supabase Cloud!`, 'success');
+    } else {
+      showToast(res.error || 'Sync completed.', 'info');
+    }
   });
 
   // Fetch from Supabase Cloud

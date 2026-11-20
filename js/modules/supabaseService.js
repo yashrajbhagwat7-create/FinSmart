@@ -128,8 +128,23 @@ class SupabaseService {
     }
   }
 
+  getClient() {
+    if (!this.client && window.supabase) {
+      const config = this.getConfig();
+      if (config.url && config.anonKey) {
+        this.client = window.supabase.createClient(config.url, config.anonKey, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true
+          }
+        });
+      }
+    }
+    return this.client;
+  }
+
   isConfigured() {
-    return this.status === 'connected' && this.client !== null;
+    return this.getClient() !== null;
   }
 
   getStatus() {
@@ -158,6 +173,7 @@ class SupabaseService {
   // SURVEY RESPONSES DATABASE OPS
   // ==============================================================
   async saveSurveyResponse(responsePayload) {
+    const client = this.getClient();
     const record = {
       user_id: responsePayload.user_id || null,
       age_group: responsePayload.age_group || '18-24 years',
@@ -182,9 +198,9 @@ class SupabaseService {
       created_at: new Date().toISOString()
     };
 
-    if (this.isConfigured()) {
+    if (client) {
       try {
-        const { data, error } = await this.client
+        const { data, error } = await client
           .from('survey_responses')
           .insert([record])
           .select();
@@ -193,6 +209,7 @@ class SupabaseService {
           console.warn('Supabase insert warning, falling back to local sync:', error.message);
           return { success: false, error: error.message, isCloud: false };
         }
+        console.log('Saved survey response to Supabase Cloud:', data?.[0]);
         return { success: true, data: data?.[0], isCloud: true };
       } catch (err) {
         console.warn('Supabase save error, local fallback active:', err);
@@ -203,10 +220,52 @@ class SupabaseService {
     return { success: true, isCloud: false, message: 'Saved to local database repository' };
   }
 
-  async fetchSurveyResponses(limit = 100) {
-    if (this.isConfigured()) {
+  async syncLocalRecordsToCloud(records) {
+    const client = this.getClient();
+    if (!client || !Array.isArray(records) || records.length === 0) {
+      return { success: false, count: 0, error: 'Database not ready or no records to sync' };
+    }
+
+    let synced = 0;
+    for (const r of records) {
       try {
-        const { data, error } = await this.client
+        const payload = {
+          user_id: r.user_id || null,
+          age_group: r.age_group || '18-24 years',
+          education: r.education || 'Undergraduate Degree',
+          occupation: r.occupation || 'Student',
+          income_range: r.income_range || 'Under ₹2,50,000',
+          location: r.location || 'Maharashtra',
+          consent_given: true,
+          knowledge_score: r.knowledge_score || 0,
+          saving_score: r.saving_score || 0,
+          investment_score: r.investment_score || 0,
+          debt_score: r.debt_score || 0,
+          insurance_score: r.insurance_score || 0,
+          overall_score: r.overall_score || 0,
+          literacy_level: r.literacy_level || 'Developing',
+          budgets_regularly: Boolean(r.budgetsRegularly),
+          saves_regularly: Boolean(r.savesRegularly),
+          invests: Boolean(r.invests),
+          has_emergency_fund: Boolean(r.hasEmergencyFund),
+          has_insurance: Boolean(r.hasInsurance),
+          raw_answers: r.raw_answers || null,
+          created_at: new Date().toISOString()
+        };
+        const { error } = await client.from('survey_responses').insert([payload]);
+        if (!error) synced++;
+      } catch (e) {
+        console.warn('Sync record skipped:', e);
+      }
+    }
+    return { success: true, count: synced };
+  }
+
+  async fetchSurveyResponses(limit = 100) {
+    const client = this.getClient();
+    if (client) {
+      try {
+        const { data, error } = await client
           .from('survey_responses')
           .select('*')
           .order('created_at', { ascending: false })
@@ -219,7 +278,7 @@ class SupabaseService {
         console.warn('Supabase fetch failed, will use local data:', err);
       }
     }
-    return { success: false, isCloud: false };
+    return { success: false, data: [], isCloud: false };
   }
 
   // ==============================================================
