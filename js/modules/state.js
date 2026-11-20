@@ -25,8 +25,14 @@ class StateManager {
     // 1. Current Authenticated User (from Supabase or local session)
     this.currentUser = supabaseService.getSessionUser();
 
-    // 2. In-progress survey state
-    this.surveyProgress = this.loadFromStorage(STORAGE_KEYS.SURVEY_PROGRESS, {
+    // Clean up any legacy shared storage key to prevent cross-account contamination
+    try {
+      localStorage.removeItem('finsmart_user_profile_v1');
+    } catch (e) {}
+
+    // 2. In-progress survey state (scoped per user)
+    const surveyKey = this.getUserSurveyProgressKey(this.currentUser);
+    this.surveyProgress = this.loadFromStorage(surveyKey, {
       demographics: {
         age_group: this.currentUser?.demographics?.age_group || '',
         education: this.currentUser?.demographics?.education || '',
@@ -39,8 +45,9 @@ class StateManager {
       answers: {}
     });
 
-    // 3. User's saved diagnostic profile
-    this.userProfile = this.loadFromStorage(STORAGE_KEYS.USER_PROFILE, null);
+    // 3. User's saved diagnostic profile (scoped per user)
+    const profileKey = this.getUserProfileKey(this.currentUser);
+    this.userProfile = this.loadFromStorage(profileKey, null);
 
     // 4. Research dataset
     let storedResearch = this.loadFromStorage(STORAGE_KEYS.RESEARCH_DATA, null);
@@ -80,20 +87,53 @@ class StateManager {
     }
   }
 
-  // Auth state management
+  getUserProfileKey(user = this.currentUser) {
+    if (user && user.email) {
+      return `finsmart_user_profile_${user.email.toLowerCase().trim()}`;
+    }
+    if (user && user.id) {
+      return `finsmart_user_profile_${user.id}`;
+    }
+    return 'finsmart_user_profile_guest';
+  }
+
+  getUserSurveyProgressKey(user = this.currentUser) {
+    if (user && user.email) {
+      return `finsmart_survey_progress_${user.email.toLowerCase().trim()}`;
+    }
+    return 'finsmart_survey_progress_guest';
+  }
+
+  // Auth state management: strictly isolates diagnostic assessment per account
   setCurrentUser(user) {
     this.currentUser = user;
-    if (user?.demographics) {
-      // Pre-fill survey demographics from user profile if not already answered
-      if (!this.surveyProgress.demographics.age_group) {
-        this.surveyProgress.demographics = {
-          ...this.surveyProgress.demographics,
-          ...user.demographics
-        };
-        this.persistSurveyProgress();
-      }
+    if (user) {
+      // 1. Load THIS specific user's saved diagnostic profile (isolated from any previous accounts)
+      const profileKey = this.getUserProfileKey(user);
+      this.userProfile = this.loadFromStorage(profileKey, null);
+
+      // 2. Load THIS user's in-progress survey state
+      const surveyKey = this.getUserSurveyProgressKey(user);
+      this.surveyProgress = this.loadFromStorage(surveyKey, {
+        demographics: {
+          age_group: user.demographics?.age_group || '',
+          education: user.demographics?.education || '',
+          occupation: user.demographics?.occupation || '',
+          income_range: user.demographics?.income_range || '',
+          location: user.demographics?.location || '',
+          consent: false
+        },
+        currentStep: 0,
+        answers: {}
+      });
+    } else {
+      // User logged out: clear active user profile and reset survey progress
+      this.userProfile = null;
+      this.clearSurveyProgress();
     }
     this.notify('auth');
+    this.notify('profile');
+    this.notify('survey');
   }
 
   // Survey methods
@@ -116,7 +156,8 @@ class StateManager {
   }
 
   persistSurveyProgress() {
-    this.saveToStorage(STORAGE_KEYS.SURVEY_PROGRESS, this.surveyProgress);
+    const surveyKey = this.getUserSurveyProgressKey(this.currentUser);
+    this.saveToStorage(surveyKey, this.surveyProgress);
   }
 
   clearSurveyProgress() {
@@ -133,6 +174,9 @@ class StateManager {
       answers: {}
     };
     try {
+      const surveyKey = this.getUserSurveyProgressKey(this.currentUser);
+      localStorage.removeItem(surveyKey);
+      localStorage.removeItem('finsmart_survey_progress_guest');
       localStorage.removeItem(STORAGE_KEYS.SURVEY_PROGRESS);
     } catch (e) {}
     this.notify('survey');
@@ -141,7 +185,8 @@ class StateManager {
   // User Profile
   async saveUserProfile(profile) {
     this.userProfile = profile;
-    this.saveToStorage(STORAGE_KEYS.USER_PROFILE, profile);
+    const profileKey = this.getUserProfileKey(this.currentUser);
+    this.saveToStorage(profileKey, profile);
 
     const record = {
       id: `user_${Date.now()}`,
