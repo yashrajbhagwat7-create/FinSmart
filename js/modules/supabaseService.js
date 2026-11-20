@@ -13,6 +13,11 @@ const STORAGE_KEY_CURRENT_SESSION = 'finsmart_auth_session_v1';
 
 export const ADMIN_EMAIL = 'yashrajbhagwat7@gmail.com';
 
+function isValidUUID(str) {
+  if (!str || typeof str !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+}
+
 // Default Supabase Cloud PostgreSQL Cluster
 const DEFAULT_SUPABASE_CONFIG = {
   url: 'https://ebgghywpuxvyerkzakqm.supabase.co',
@@ -174,8 +179,15 @@ class SupabaseService {
   // ==============================================================
   async saveSurveyResponse(responsePayload) {
     const client = this.getClient();
+    const userEmail = (responsePayload.email || responsePayload.session_id || this.getSessionUser()?.email || '').toLowerCase().trim();
+    
+    // Ensure user_id is only passed if it is a valid UUID to prevent PostgreSQL 22P02 error
+    const rawUserId = responsePayload.user_id || this.getSessionUser()?.id || null;
+    const validUserId = isValidUUID(rawUserId) ? rawUserId : null;
+
     const record = {
-      user_id: responsePayload.user_id || null,
+      user_id: validUserId,
+      session_id: userEmail || null,
       age_group: responsePayload.age_group || '18-24 years',
       education: responsePayload.education || 'Undergraduate Degree',
       occupation: responsePayload.occupation || 'Student',
@@ -194,7 +206,10 @@ class SupabaseService {
       invests: Boolean(responsePayload.invests),
       has_emergency_fund: Boolean(responsePayload.hasEmergencyFund),
       has_insurance: Boolean(responsePayload.hasInsurance),
-      raw_answers: responsePayload.raw_answers || null,
+      raw_answers: {
+        ...(responsePayload.raw_answers || {}),
+        user_email: userEmail || null
+      },
       created_at: new Date().toISOString()
     };
 
@@ -220,6 +235,30 @@ class SupabaseService {
     return { success: true, isCloud: false, message: 'Saved to local database repository' };
   }
 
+  async fetchUserSurveyResponse(email) {
+    if (!email) return { success: false, data: null };
+    const client = this.getClient();
+    if (!client) return { success: false, data: null };
+
+    try {
+      const cleanEmail = email.toLowerCase().trim();
+      const { data, error } = await client
+        .from('survey_responses')
+        .select('*')
+        .eq('session_id', cleanEmail)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        return { success: true, data: data[0] };
+      }
+      return { success: false, data: null };
+    } catch (err) {
+      console.warn('Error fetching user survey from Supabase:', err);
+      return { success: false, data: null };
+    }
+  }
+
   async syncLocalRecordsToCloud(records) {
     const client = this.getClient();
     if (!client || !Array.isArray(records) || records.length === 0) {
@@ -229,8 +268,13 @@ class SupabaseService {
     let synced = 0;
     for (const r of records) {
       try {
+        const rawUserId = r.user_id || null;
+        const validUserId = isValidUUID(rawUserId) ? rawUserId : null;
+        const userEmail = (r.email || r.session_id || '').toLowerCase().trim();
+
         const payload = {
-          user_id: r.user_id || null,
+          user_id: validUserId,
+          session_id: userEmail || null,
           age_group: r.age_group || '18-24 years',
           education: r.education || 'Undergraduate Degree',
           occupation: r.occupation || 'Student',
@@ -249,7 +293,10 @@ class SupabaseService {
           invests: Boolean(r.invests),
           has_emergency_fund: Boolean(r.hasEmergencyFund),
           has_insurance: Boolean(r.hasInsurance),
-          raw_answers: r.raw_answers || null,
+          raw_answers: {
+            ...(r.raw_answers || {}),
+            user_email: userEmail || null
+          },
           created_at: new Date().toISOString()
         };
         const { error } = await client.from('survey_responses').insert([payload]);

@@ -153,7 +153,7 @@ export function renderLoginPage(container) {
     if (window.lucide) window.lucide.createIcons();
 
     if (res.success) {
-      state.setCurrentUser(res.user);
+      await state.setCurrentUser(res.user);
       showToast(res.message, 'success');
       navigateTo('profile');
     } else {
@@ -393,7 +393,7 @@ export function renderRegisterPage(container) {
     });
 
     if (res.success) {
-      state.setCurrentUser(res.user);
+      await state.setCurrentUser(res.user);
       showToast(res.message, 'success');
       navigateTo('profile');
     } else {

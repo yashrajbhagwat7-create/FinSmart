@@ -49,6 +49,11 @@ class StateManager {
     const profileKey = this.getUserProfileKey(this.currentUser);
     this.userProfile = this.loadFromStorage(profileKey, null);
 
+    // If active session on this device has no local survey profile yet, check Supabase Cloud
+    if (this.currentUser?.email && !this.userProfile) {
+      this.fetchCloudSurveyForCurrentUser(this.currentUser);
+    }
+
     // 4. Research dataset
     let storedResearch = this.loadFromStorage(STORAGE_KEYS.RESEARCH_DATA, null);
     if (!storedResearch || !Array.isArray(storedResearch) || storedResearch.length === 0) {
@@ -105,7 +110,7 @@ class StateManager {
   }
 
   // Auth state management: strictly isolates diagnostic assessment per account
-  setCurrentUser(user) {
+  async setCurrentUser(user) {
     this.currentUser = user;
     if (user) {
       // 1. Load THIS specific user's saved diagnostic profile (isolated from any previous accounts)
@@ -126,6 +131,11 @@ class StateManager {
         currentStep: 0,
         answers: {}
       });
+
+      // 3. Cross-device persistence: If no local profile found for this user, fetch from Supabase Cloud
+      if (!this.userProfile && user.email) {
+        await this.fetchCloudSurveyForCurrentUser(user);
+      }
     } else {
       // User logged out: clear active user profile and reset survey progress
       this.userProfile = null;
@@ -134,6 +144,55 @@ class StateManager {
     this.notify('auth');
     this.notify('profile');
     this.notify('survey');
+  }
+
+  async fetchCloudSurveyForCurrentUser(user = this.currentUser) {
+    if (!user || !user.email) return;
+    try {
+      const res = await supabaseService.fetchUserSurveyResponse(user.email);
+      if (res.success && res.data) {
+        const row = res.data;
+        const profile = {
+          id: row.id,
+          demographics: {
+            age_group: row.age_group,
+            education: row.education,
+            occupation: row.occupation,
+            income_range: row.income_range,
+            location: row.location,
+            consent: true
+          },
+          categoryScores: {
+            knowledge: Number(row.knowledge_score),
+            saving: Number(row.saving_score),
+            investing: Number(row.investment_score),
+            debt: Number(row.debt_score),
+            insurance: Number(row.insurance_score)
+          },
+          overallScore: Number(row.overall_score),
+          literacyLevel: row.literacy_level,
+          strengths: [
+            row.saving_score >= 70 ? 'Saving & Emergency Funds' : null,
+            row.knowledge_score >= 70 ? 'Financial Fundamentals' : null,
+            row.investment_score >= 70 ? 'Investment Literacy' : null
+          ].filter(Boolean),
+          weaknesses: [
+            row.insurance_score < 60 ? 'Risk & Insurance Planning' : null,
+            row.debt_score < 60 ? 'Debt & Credit Management' : null,
+            row.investment_score < 60 ? 'Compounding & Investing' : null
+          ].filter(Boolean),
+          answers: row.raw_answers || {},
+          created_at: row.created_at
+        };
+        const profileKey = this.getUserProfileKey(user);
+        this.userProfile = profile;
+        this.saveToStorage(profileKey, profile);
+        this.notify('profile');
+        console.log(`Cloud survey retrieved from Supabase for ${user.email} (Score: ${profile.overallScore}%)`);
+      }
+    } catch (e) {
+      console.warn('Auto cloud survey retrieval skipped:', e);
+    }
   }
 
   // Survey methods
@@ -188,13 +247,16 @@ class StateManager {
     const profileKey = this.getUserProfileKey(this.currentUser);
     this.saveToStorage(profileKey, profile);
 
+    const userEmail = (this.currentUser?.email || '').toLowerCase().trim();
     const record = {
       id: `user_${Date.now()}`,
       user_id: this.currentUser?.id || null,
-      age_group: profile.demographics.age_group || '25-34 years',
+      email: userEmail,
+      session_id: userEmail || null,
+      age_group: profile.demographics.age_group || '18-24 years',
       education: profile.demographics.education || 'Undergraduate Degree',
-      occupation: profile.demographics.occupation || 'Salaried Professional',
-      income_range: profile.demographics.income_range || '₹5,00,000 - ₹10,00,000',
+      occupation: profile.demographics.occupation || 'Student',
+      income_range: profile.demographics.income_range || 'Under ₹2,50,000',
       location: profile.demographics.location || 'Maharashtra',
       knowledge_score: profile.categoryScores.knowledge,
       saving_score: profile.categoryScores.saving,
@@ -209,20 +271,25 @@ class StateManager {
       hasEmergencyFund: profile.categoryScores.saving >= 65,
       hasInsurance: profile.categoryScores.insurance >= 60,
       raw_answers: profile.answers || {},
-      created_at: new Date().toISOString().split('T')[0]
+      created_at: new Date().toISOString()
     };
 
     // Also add to anonymized research dataset locally
     this.addAnonymizedResearchRecord(record);
 
-    // Sync to Supabase Cloud Database asynchronously
+    // Sync to Supabase Cloud Database immediately
+    let cloudRes = null;
     try {
-      await supabaseService.saveSurveyResponse(record);
+      cloudRes = await supabaseService.saveSurveyResponse(record);
+      if (cloudRes?.isCloud) {
+        console.log('Survey successfully pushed to Supabase PostgreSQL database in real time!');
+      }
     } catch (e) {
-      console.warn('Supabase sync skipped:', e);
+      console.warn('Supabase automatic sync skipped:', e);
     }
 
     this.notify('profile');
+    return cloudRes;
   }
 
   addAnonymizedResearchRecord(record) {

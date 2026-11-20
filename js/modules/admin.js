@@ -432,7 +432,7 @@ function renderAdminLogin(container) {
 
     if (res.success && res.user && res.user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
       isAdminAuthenticated = true;
-      state.setCurrentUser(res.user);
+      await state.setCurrentUser(res.user);
       renderAdminDashboard(container);
       showToast('Administrator authenticated successfully!', 'success');
     } else {
