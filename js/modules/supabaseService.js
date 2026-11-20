@@ -25,6 +25,34 @@ const DEFAULT_SUPABASE_CONFIG = {
   anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImViZ2doeXdwdXh2eWVya3pha3FtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxODM1MTgsImV4cCI6MjExMDc1OTUxOH0.v-I9z8kcy-tBzlmV8ZQ_lGi48B5zvLRzirIvjsn7ayM'
 };
 
+export function normalizeSupabaseUrl(url) {
+  if (!url || typeof url !== 'string') return DEFAULT_SUPABASE_CONFIG.url;
+  const trimmed = url.trim().replace(/\/$/, '');
+
+  // Detect and transform Supabase Dashboard URL (e.g. https://supabase.com/dashboard/project/ebgghywpuxvyerkzakqm)
+  const dashboardMatch = trimmed.match(/supabase\.com\/dashboard\/project\/([a-z0-9_-]+)/i);
+  if (dashboardMatch && dashboardMatch[1]) {
+    return `https://${dashboardMatch[1]}.supabase.co`;
+  }
+
+  // Detect raw project ref (e.g. "ebgghywpuxvyerkzakqm")
+  if (/^[a-z0-9_-]{15,30}$/i.test(trimmed)) {
+    return `https://${trimmed}.supabase.co`;
+  }
+
+  // If already standard https://<ref>.supabase.co
+  if (/^https:\/\/[a-z0-9_-]+\.supabase\.co$/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Reject any supabase.com web dashboard URLs or invalid formats
+  if (trimmed.includes('supabase.com')) {
+    return DEFAULT_SUPABASE_CONFIG.url;
+  }
+
+  return trimmed.endsWith('.supabase.co') ? trimmed : DEFAULT_SUPABASE_CONFIG.url;
+}
+
 class SupabaseService {
   constructor() {
     this.client = null;
@@ -35,13 +63,19 @@ class SupabaseService {
   }
 
   init() {
-    // Purge any invalid or cleared config keys so default production database is ALWAYS active
+    // Purge any invalid, cleared, or dashboard config keys so production API database is ALWAYS active
     try {
       const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.cleared || !parsed.url || !parsed.anonKey || !parsed.url.includes('supabase.co')) {
+        if (parsed.cleared || !parsed.url || !parsed.anonKey || parsed.url.includes('dashboard') || parsed.url.includes('supabase.com') || !parsed.url.endsWith('.supabase.co')) {
           localStorage.removeItem(STORAGE_KEY_CONFIG);
+          console.log('[SupabaseService] Auto-purged non-API/dashboard URL from storage. Restored production cluster.');
+        } else {
+          const clean = normalizeSupabaseUrl(parsed.url);
+          if (clean !== parsed.url) {
+            localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify({ url: clean, anonKey: parsed.anonKey.trim() }));
+          }
         }
       }
     } catch (e) {}
@@ -55,20 +89,22 @@ class SupabaseService {
       const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.url && parsed.anonKey && typeof parsed.url === 'string' && parsed.url.includes('supabase.co')) {
-          return parsed;
+        if (parsed.url && parsed.anonKey && typeof parsed.url === 'string') {
+          const cleanUrl = normalizeSupabaseUrl(parsed.url);
+          const cleanKey = parsed.anonKey.trim();
+          if (cleanKey.startsWith('ey') && cleanUrl.endsWith('.supabase.co')) {
+            return { url: cleanUrl, anonKey: cleanKey };
+          }
         }
       }
-      return DEFAULT_SUPABASE_CONFIG;
-    } catch (e) {
-      return DEFAULT_SUPABASE_CONFIG;
-    }
+    } catch (e) {}
+    return { ...DEFAULT_SUPABASE_CONFIG };
   }
 
   saveConfig(url, anonKey) {
-    const cleanUrl = (url || '').trim().replace(/\/$/, '');
+    const cleanUrl = normalizeSupabaseUrl(url);
     const cleanKey = (anonKey || '').trim();
-    if (cleanUrl && cleanKey && cleanUrl.includes('supabase.co')) {
+    if (cleanUrl && cleanKey && cleanKey.startsWith('ey') && cleanUrl.endsWith('.supabase.co')) {
       localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify({ url: cleanUrl, anonKey: cleanKey }));
       return this.connect(cleanUrl, cleanKey);
     } else {
@@ -236,10 +272,10 @@ class SupabaseService {
       created_at: new Date().toISOString()
     };
 
-    // Guaranteed target credentials (falls back to DEFAULT_SUPABASE_CONFIG)
+    // Guaranteed target credentials (strict production defaults with normalization)
     const config = this.getConfig();
-    const targetUrl = (config.url || DEFAULT_SUPABASE_CONFIG.url).replace(/\/$/, '');
-    const targetKey = config.anonKey || DEFAULT_SUPABASE_CONFIG.anonKey;
+    const targetUrl = normalizeSupabaseUrl(config.url || DEFAULT_SUPABASE_CONFIG.url);
+    const targetKey = (config.anonKey && config.anonKey.startsWith('ey')) ? config.anonKey : DEFAULT_SUPABASE_CONFIG.anonKey;
 
     // 1. Primary path: Direct Native HTTP Fetch to Supabase REST endpoint
     try {
@@ -295,8 +331,8 @@ class SupabaseService {
     if (!email) return { success: false, data: null };
     const cleanEmail = email.toLowerCase().trim();
     const config = this.getConfig();
-    const targetUrl = (config.url || DEFAULT_SUPABASE_CONFIG.url).replace(/\/$/, '');
-    const targetKey = config.anonKey || DEFAULT_SUPABASE_CONFIG.anonKey;
+    const targetUrl = normalizeSupabaseUrl(config.url || DEFAULT_SUPABASE_CONFIG.url);
+    const targetKey = (config.anonKey && config.anonKey.startsWith('ey')) ? config.anonKey : DEFAULT_SUPABASE_CONFIG.anonKey;
 
     // 1. Primary path: Direct Native HTTP Fetch to Supabase REST endpoint
     try {
@@ -366,8 +402,8 @@ class SupabaseService {
       return { success: false, count: 0, error: 'No records to sync' };
     }
     const config = this.getConfig();
-    const targetUrl = (config.url || DEFAULT_SUPABASE_CONFIG.url).replace(/\/$/, '');
-    const targetKey = config.anonKey || DEFAULT_SUPABASE_CONFIG.anonKey;
+    const targetUrl = normalizeSupabaseUrl(config.url || DEFAULT_SUPABASE_CONFIG.url);
+    const targetKey = (config.anonKey && config.anonKey.startsWith('ey')) ? config.anonKey : DEFAULT_SUPABASE_CONFIG.anonKey;
 
     let synced = 0;
 
@@ -435,8 +471,8 @@ class SupabaseService {
 
   async fetchSurveyResponses(limit = 100) {
     const config = this.getConfig();
-    const targetUrl = (config.url || DEFAULT_SUPABASE_CONFIG.url).replace(/\/$/, '');
-    const targetKey = config.anonKey || DEFAULT_SUPABASE_CONFIG.anonKey;
+    const targetUrl = normalizeSupabaseUrl(config.url || DEFAULT_SUPABASE_CONFIG.url);
+    const targetKey = (config.anonKey && config.anonKey.startsWith('ey')) ? config.anonKey : DEFAULT_SUPABASE_CONFIG.anonKey;
 
     try {
       const res = await fetch(
@@ -493,8 +529,8 @@ class SupabaseService {
     };
 
     const config = this.getConfig();
-    const targetUrl = (config.url || DEFAULT_SUPABASE_CONFIG.url).replace(/\/$/, '');
-    const targetKey = config.anonKey || DEFAULT_SUPABASE_CONFIG.anonKey;
+    const targetUrl = normalizeSupabaseUrl(config.url || DEFAULT_SUPABASE_CONFIG.url);
+    const targetKey = (config.anonKey && config.anonKey.startsWith('ey')) ? config.anonKey : DEFAULT_SUPABASE_CONFIG.anonKey;
 
     try {
       await fetch(`${targetUrl}/rest/v1/quiz_attempts`, {

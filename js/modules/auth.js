@@ -783,8 +783,17 @@ export function openSupabaseConfigModal() {
   });
 
   saveBtn?.addEventListener('click', async () => {
-    const url = urlInput.value.trim();
+    let url = urlInput.value.trim();
     const key = keyInput.value.trim();
+
+    // Auto-normalize if user pasted a Supabase dashboard URL
+    if (url.includes('dashboard') || url.includes('supabase.com')) {
+      const match = url.match(/project\/([a-z0-9_-]+)/i);
+      if (match && match[1]) {
+        url = `https://${match[1]}.supabase.co`;
+        urlInput.value = url;
+      }
+    }
 
     if (!url || !key) {
       resultBox.className = 'text-xs p-2.5 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 block';
