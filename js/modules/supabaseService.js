@@ -13,6 +13,12 @@ const STORAGE_KEY_CURRENT_SESSION = 'finsmart_auth_session_v1';
 
 export const ADMIN_EMAIL = 'yashrajbhagwat7@gmail.com';
 
+// Default Supabase Cloud PostgreSQL Cluster
+const DEFAULT_SUPABASE_CONFIG = {
+  url: 'https://ebgghywpuxvyerkzakqm.supabase.co',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImViZ2doeXdwdXh2eWVya3pha3FtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxODM1MTgsImV4cCI6MjExMDc1OTUxOH0.v-I9z8kcy-tBzlmV8ZQ_lGi48B5zvLRzirIvjsn7ayM'
+};
+
 class SupabaseService {
   constructor() {
     this.client = null;
@@ -32,19 +38,29 @@ class SupabaseService {
   getConfig() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
-      return saved ? JSON.parse(saved) : { url: '', anonKey: '' };
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.cleared) {
+          return { url: '', anonKey: '' };
+        }
+        if (parsed.url && parsed.anonKey) {
+          return parsed;
+        }
+      }
+      return DEFAULT_SUPABASE_CONFIG;
     } catch (e) {
-      return { url: '', anonKey: '' };
+      return DEFAULT_SUPABASE_CONFIG;
     }
   }
 
   saveConfig(url, anonKey) {
     const cleanUrl = (url || '').trim().replace(/\/$/, '');
     const cleanKey = (anonKey || '').trim();
-    localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify({ url: cleanUrl, anonKey: cleanKey }));
     if (cleanUrl && cleanKey) {
+      localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify({ url: cleanUrl, anonKey: cleanKey }));
       return this.connect(cleanUrl, cleanKey);
     } else {
+      localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify({ cleared: true, url: '', anonKey: '' }));
       this.client = null;
       this.status = 'not_configured';
       this.notifyListeners();
@@ -76,7 +92,12 @@ class SupabaseService {
 
       if (error && error.code !== 'PGRST116') {
         // If table doesn't exist yet, it's still a valid connection to Supabase project
-        if (error.message && error.message.includes('relation "public.survey_responses" does not exist')) {
+        const isTableMissing = (error.message && (
+          error.message.includes('relation "public.survey_responses" does not exist') ||
+          error.message.includes('schema cache')
+        )) || error.code === 'PGRST205';
+
+        if (isTableMissing) {
           this.status = 'connected';
           this.lastError = 'Connected to Supabase! Note: Please execute supabase_schema.sql in SQL Editor to create tables.';
           this.notifyListeners();
