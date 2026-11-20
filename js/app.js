@@ -34,8 +34,12 @@ document.addEventListener('DOMContentLoaded', () => {
   state.subscribe((event) => {
     if (event === 'profile') {
       const myScoreNav = document.getElementById('nav-my-score');
-      if (myScoreNav && state.userProfile) {
-        myScoreNav.classList.remove('hidden');
+      if (myScoreNav) {
+        if (state.userProfile && state.userProfile.overallScore) {
+          myScoreNav.classList.remove('hidden');
+        } else {
+          myScoreNav.classList.add('hidden');
+        }
       }
     }
     if (event === 'auth') {

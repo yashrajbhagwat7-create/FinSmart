@@ -4,6 +4,7 @@
  * - Survey response persistence and empirical research repository
  * - Cloud user authentication and profiles
  * - Standard and AI-generated quiz attempt tracking
+ * - Direct, native HTTP fetch to PostgREST API (zero CDN/script dependencies)
  * - Automatic graceful fallback to secure local persistence when credentials are not yet entered.
  */
 
@@ -27,7 +28,7 @@ const DEFAULT_SUPABASE_CONFIG = {
 class SupabaseService {
   constructor() {
     this.client = null;
-    this.status = 'not_configured'; // 'connected' | 'not_configured' | 'error'
+    this.status = 'connected'; // default connected to cluster
     this.lastError = null;
     this.listeners = [];
     this.init();
@@ -48,7 +49,7 @@ class SupabaseService {
         if (parsed.cleared) {
           return { url: '', anonKey: '' };
         }
-        if (parsed.url && parsed.anonKey) {
+        if (parsed.url && parsed.anonKey && parsed.url.includes('supabase.co')) {
           return parsed;
         }
       }
@@ -74,57 +75,61 @@ class SupabaseService {
   }
 
   async connect(url, anonKey) {
-    if (!window.supabase) {
-      this.status = 'error';
-      this.lastError = 'Supabase JS library not loaded. Check script tag.';
+    const cleanUrl = (url || '').trim().replace(/\/$/, '');
+    const cleanKey = (anonKey || '').trim();
+
+    if (!cleanUrl || !cleanKey) {
+      this.status = 'not_configured';
       this.notifyListeners();
-      return { success: false, error: this.lastError };
+      return { success: false, error: 'Missing Supabase URL or Anon Key' };
     }
 
     try {
-      this.client = window.supabase.createClient(url, anonKey, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true
+      if (window.supabase) {
+        this.client = window.supabase.createClient(cleanUrl, cleanKey, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true
+          }
+        });
+      }
+
+      // Fast, direct health ping via browser native fetch
+      const testRes = await fetch(`${cleanUrl}/rest/v1/survey_responses?select=id&limit=1`, {
+        headers: {
+          'apikey': cleanKey,
+          'Authorization': `Bearer ${cleanKey}`
         }
       });
 
-      // Quick ping test
-      const { data, error } = await this.client
-        .from('survey_responses')
-        .select('id')
-        .limit(1);
-
-      if (error && error.code !== 'PGRST116') {
-        // If table doesn't exist yet, it's still a valid connection to Supabase project
-        const isTableMissing = (error.message && (
-          error.message.includes('relation "public.survey_responses" does not exist') ||
-          error.message.includes('schema cache')
-        )) || error.code === 'PGRST205';
-
-        if (isTableMissing) {
-          this.status = 'connected';
-          this.lastError = 'Connected to Supabase! Note: Please execute supabase_schema.sql in SQL Editor to create tables.';
-          this.notifyListeners();
-          return { success: true, warning: this.lastError };
-        }
-
-        if (error.code === '42501' || (error.message && error.message.includes('permission denied'))) {
-          this.status = 'error';
-          this.lastError = 'PostgreSQL Permission Denied: Run "GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;" in Supabase SQL Editor.';
-          this.notifyListeners();
-          return { success: false, error: this.lastError };
-        }
-        this.status = 'error';
-        this.lastError = error.message;
+      if (testRes.ok) {
+        this.status = 'connected';
+        this.lastError = null;
         this.notifyListeners();
-        return { success: false, error: error.message };
+        return { success: true, message: 'Connected to Supabase PostgreSQL database!' };
       }
 
-      this.status = 'connected';
-      this.lastError = null;
+      const errJson = await testRes.json().catch(() => ({}));
+      const errMsg = errJson.message || `HTTP ${testRes.status}`;
+
+      if (errJson.code === '42501' || errMsg.includes('permission denied')) {
+        this.status = 'error';
+        this.lastError = 'PostgreSQL Permission Denied: Run "GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;" in Supabase SQL Editor.';
+        this.notifyListeners();
+        return { success: false, error: this.lastError };
+      }
+
+      if (errJson.code === 'PGRST205' || errMsg.includes('schema cache') || errMsg.includes('does not exist')) {
+        this.status = 'connected';
+        this.lastError = 'Connected to Supabase! Note: Please execute supabase_schema.sql in SQL Editor to create tables.';
+        this.notifyListeners();
+        return { success: true, warning: this.lastError };
+      }
+
+      this.status = 'error';
+      this.lastError = errMsg;
       this.notifyListeners();
-      return { success: true, message: 'Connected to Supabase PostgreSQL database!' };
+      return { success: false, error: errMsg };
     } catch (err) {
       this.status = 'error';
       this.lastError = err.message || 'Connection failed';
@@ -149,7 +154,8 @@ class SupabaseService {
   }
 
   isConfigured() {
-    return this.getClient() !== null;
+    const config = this.getConfig();
+    return Boolean(config && config.url && config.anonKey);
   }
 
   getStatus() {
@@ -175,37 +181,60 @@ class SupabaseService {
   }
 
   // ==============================================================
-  // SURVEY RESPONSES DATABASE OPS
+  // SURVEY RESPONSES DATABASE OPS (DIRECT NATIVE POSTGREST FETCH)
   // ==============================================================
   async saveSurveyResponse(responsePayload) {
-    const client = this.getClient();
     const userEmail = (responsePayload.email || responsePayload.session_id || this.getSessionUser()?.email || '').toLowerCase().trim();
     
     // Ensure user_id is only passed if it is a valid UUID to prevent PostgreSQL 22P02 error
     const rawUserId = responsePayload.user_id || this.getSessionUser()?.id || null;
     const validUserId = isValidUUID(rawUserId) ? rawUserId : null;
 
+    // Demographics defaults
+    const ageGroup = (responsePayload.age_group || '').trim() || '18-24 years';
+    const education = (responsePayload.education || '').trim() || 'Undergraduate Degree';
+    const occupation = (responsePayload.occupation || '').trim() || 'Student';
+    const incomeRange = (responsePayload.income_range || '').trim() || 'Under ₹2,50,000';
+    const location = (responsePayload.location || '').trim() || 'Maharashtra';
+
+    // Scores
+    const knowledgeScore = Number(responsePayload.knowledge_score || 0);
+    const savingScore = Number(responsePayload.saving_score || 0);
+    const investmentScore = Number(responsePayload.investment_score || 0);
+    const debtScore = Number(responsePayload.debt_score || 0);
+    const insuranceScore = Number(responsePayload.insurance_score || 0);
+    const overallScore = Number(responsePayload.overall_score || 0);
+
+    // Validate literacy_level against CHECK constraint: ('Beginner', 'Developing', 'Good', 'Excellent')
+    let literacyLevel = responsePayload.literacy_level || 'Developing';
+    if (!['Beginner', 'Developing', 'Good', 'Excellent'].includes(literacyLevel)) {
+      if (overallScore >= 81) literacyLevel = 'Excellent';
+      else if (overallScore >= 61) literacyLevel = 'Good';
+      else if (overallScore >= 41) literacyLevel = 'Developing';
+      else literacyLevel = 'Beginner';
+    }
+
     const record = {
       user_id: validUserId,
-      session_id: userEmail || null,
-      age_group: responsePayload.age_group || '18-24 years',
-      education: responsePayload.education || 'Undergraduate Degree',
-      occupation: responsePayload.occupation || 'Student',
-      income_range: responsePayload.income_range || 'Under ₹2,50,000',
-      location: responsePayload.location || 'Maharashtra',
+      session_id: userEmail || `guest_${Date.now()}`,
+      age_group: ageGroup,
+      education: education,
+      occupation: occupation,
+      income_range: incomeRange,
+      location: location,
       consent_given: true,
-      knowledge_score: responsePayload.knowledge_score || 0,
-      saving_score: responsePayload.saving_score || 0,
-      investment_score: responsePayload.investment_score || 0,
-      debt_score: responsePayload.debt_score || 0,
-      insurance_score: responsePayload.insurance_score || 0,
-      overall_score: responsePayload.overall_score || 0,
-      literacy_level: responsePayload.literacy_level || 'Developing',
-      budgets_regularly: Boolean(responsePayload.budgetsRegularly),
-      saves_regularly: Boolean(responsePayload.savesRegularly),
+      knowledge_score: knowledgeScore,
+      saving_score: savingScore,
+      investment_score: investmentScore,
+      debt_score: debtScore,
+      insurance_score: insuranceScore,
+      overall_score: overallScore,
+      literacy_level: literacyLevel,
+      budgets_regularly: Boolean(responsePayload.budgetsRegularly ?? responsePayload.budgets_regularly),
+      saves_regularly: Boolean(responsePayload.savesRegularly ?? responsePayload.saves_regularly),
       invests: Boolean(responsePayload.invests),
-      has_emergency_fund: Boolean(responsePayload.hasEmergencyFund),
-      has_insurance: Boolean(responsePayload.hasInsurance),
+      has_emergency_fund: Boolean(responsePayload.hasEmergencyFund ?? responsePayload.has_emergency_fund),
+      has_insurance: Boolean(responsePayload.hasInsurance ?? responsePayload.has_insurance),
       raw_answers: {
         ...(responsePayload.raw_answers || {}),
         user_email: userEmail || null
@@ -213,6 +242,38 @@ class SupabaseService {
       created_at: new Date().toISOString()
     };
 
+    // 1. Primary path: Direct Native HTTP Fetch to Supabase REST endpoint
+    const config = this.getConfig();
+    if (config.url && config.anonKey) {
+      try {
+        const cleanUrl = config.url.replace(/\/$/, '');
+        const res = await fetch(`${cleanUrl}/rest/v1/survey_responses`, {
+          method: 'POST',
+          headers: {
+            'apikey': config.anonKey,
+            'Authorization': `Bearer ${config.anonKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify(record)
+        });
+
+        if (res.ok) {
+          const inserted = await res.json().catch(() => []);
+          const savedRow = Array.isArray(inserted) ? inserted[0] : inserted;
+          console.log('✅ Real-time survey response recorded to Supabase PostgreSQL:', savedRow);
+          return { success: true, data: savedRow, isCloud: true };
+        } else {
+          const errJson = await res.json().catch(() => ({}));
+          console.warn('Supabase REST POST returned non-ok status:', res.status, errJson);
+        }
+      } catch (fetchErr) {
+        console.warn('Direct fetch to Supabase failed, trying client fallback:', fetchErr);
+      }
+    }
+
+    // 2. Secondary fallback: supabase-js client if loaded
+    const client = this.getClient();
     if (client) {
       try {
         const { data, error } = await client
@@ -220,15 +281,12 @@ class SupabaseService {
           .insert([record])
           .select();
 
-        if (error) {
-          console.warn('Supabase insert warning, falling back to local sync:', error.message);
-          return { success: false, error: error.message, isCloud: false };
+        if (!error && data?.[0]) {
+          console.log('Saved survey response to Supabase Cloud via client:', data[0]);
+          return { success: true, data: data[0], isCloud: true };
         }
-        console.log('Saved survey response to Supabase Cloud:', data?.[0]);
-        return { success: true, data: data?.[0], isCloud: true };
       } catch (err) {
-        console.warn('Supabase save error, local fallback active:', err);
-        return { success: false, error: err.message, isCloud: false };
+        console.warn('Supabase client save error:', err);
       }
     }
 
@@ -237,70 +295,143 @@ class SupabaseService {
 
   async fetchUserSurveyResponse(email) {
     if (!email) return { success: false, data: null };
-    const client = this.getClient();
-    if (!client) return { success: false, data: null };
+    const cleanEmail = email.toLowerCase().trim();
+    const config = this.getConfig();
 
-    try {
-      const cleanEmail = email.toLowerCase().trim();
-      const { data, error } = await client
-        .from('survey_responses')
-        .select('*')
-        .eq('session_id', cleanEmail)
-        .order('created_at', { ascending: false })
-        .limit(1);
+    // 1. Primary path: Direct Native HTTP Fetch to Supabase REST endpoint
+    if (config.url && config.anonKey) {
+      try {
+        const cleanUrl = config.url.replace(/\/$/, '');
+        
+        // Match by session_id = cleanEmail
+        const res = await fetch(
+          `${cleanUrl}/rest/v1/survey_responses?session_id=eq.${encodeURIComponent(cleanEmail)}&order=created_at.desc&limit=1`,
+          {
+            headers: {
+              'apikey': config.anonKey,
+              'Authorization': `Bearer ${config.anonKey}`
+            }
+          }
+        );
 
-      if (!error && Array.isArray(data) && data.length > 0) {
-        return { success: true, data: data[0] };
+        if (res.ok) {
+          const rows = await res.json().catch(() => []);
+          if (Array.isArray(rows) && rows.length > 0) {
+            return { success: true, data: rows[0] };
+          }
+        }
+
+        // Secondary check: match raw_answers->>user_email
+        const resRaw = await fetch(
+          `${cleanUrl}/rest/v1/survey_responses?raw_answers->>user_email=eq.${encodeURIComponent(cleanEmail)}&order=created_at.desc&limit=1`,
+          {
+            headers: {
+              'apikey': config.anonKey,
+              'Authorization': `Bearer ${config.anonKey}`
+            }
+          }
+        );
+
+        if (resRaw.ok) {
+          const rowsRaw = await resRaw.json().catch(() => []);
+          if (Array.isArray(rowsRaw) && rowsRaw.length > 0) {
+            return { success: true, data: rowsRaw[0] };
+          }
+        }
+      } catch (err) {
+        console.warn('Direct fetch of user survey from Supabase failed:', err);
       }
-      return { success: false, data: null };
-    } catch (err) {
-      console.warn('Error fetching user survey from Supabase:', err);
-      return { success: false, data: null };
     }
+
+    // 2. Client fallback
+    const client = this.getClient();
+    if (client) {
+      try {
+        const { data, error } = await client
+          .from('survey_responses')
+          .select('*')
+          .eq('session_id', cleanEmail)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (!error && Array.isArray(data) && data.length > 0) {
+          return { success: true, data: data[0] };
+        }
+      } catch (err) {
+        console.warn('Error fetching user survey via client:', err);
+      }
+    }
+
+    return { success: false, data: null };
   }
 
   async syncLocalRecordsToCloud(records) {
-    const client = this.getClient();
-    if (!client || !Array.isArray(records) || records.length === 0) {
-      return { success: false, count: 0, error: 'Database not ready or no records to sync' };
+    if (!Array.isArray(records) || records.length === 0) {
+      return { success: false, count: 0, error: 'No records to sync' };
+    }
+    const config = this.getConfig();
+    if (!config.url || !config.anonKey) {
+      return { success: false, count: 0, error: 'Database credentials not configured' };
     }
 
+    const cleanUrl = config.url.replace(/\/$/, '');
     let synced = 0;
+
     for (const r of records) {
       try {
         const rawUserId = r.user_id || null;
         const validUserId = isValidUUID(rawUserId) ? rawUserId : null;
         const userEmail = (r.email || r.session_id || '').toLowerCase().trim();
 
+        let literacyLevel = r.literacy_level || r.literacyLevel || 'Developing';
+        if (!['Beginner', 'Developing', 'Good', 'Excellent'].includes(literacyLevel)) {
+          const score = Number(r.overall_score || 0);
+          if (score >= 81) literacyLevel = 'Excellent';
+          else if (score >= 61) literacyLevel = 'Good';
+          else if (score >= 41) literacyLevel = 'Developing';
+          else literacyLevel = 'Beginner';
+        }
+
         const payload = {
           user_id: validUserId,
-          session_id: userEmail || null,
+          session_id: userEmail || `guest_${Date.now()}`,
           age_group: r.age_group || '18-24 years',
           education: r.education || 'Undergraduate Degree',
           occupation: r.occupation || 'Student',
           income_range: r.income_range || 'Under ₹2,50,000',
           location: r.location || 'Maharashtra',
           consent_given: true,
-          knowledge_score: r.knowledge_score || 0,
-          saving_score: r.saving_score || 0,
-          investment_score: r.investment_score || 0,
-          debt_score: r.debt_score || 0,
-          insurance_score: r.insurance_score || 0,
-          overall_score: r.overall_score || 0,
-          literacy_level: r.literacy_level || 'Developing',
-          budgets_regularly: Boolean(r.budgetsRegularly),
-          saves_regularly: Boolean(r.savesRegularly),
+          knowledge_score: Number(r.knowledge_score || 0),
+          saving_score: Number(r.saving_score || 0),
+          investment_score: Number(r.investment_score || 0),
+          debt_score: Number(r.debt_score || 0),
+          insurance_score: Number(r.insurance_score || 0),
+          overall_score: Number(r.overall_score || 0),
+          literacy_level: literacyLevel,
+          budgets_regularly: Boolean(r.budgetsRegularly ?? r.budgets_regularly),
+          saves_regularly: Boolean(r.savesRegularly ?? r.saves_regularly),
           invests: Boolean(r.invests),
-          has_emergency_fund: Boolean(r.hasEmergencyFund),
-          has_insurance: Boolean(r.hasInsurance),
+          has_emergency_fund: Boolean(r.hasEmergencyFund ?? r.has_emergency_fund),
+          has_insurance: Boolean(r.hasInsurance ?? r.has_insurance),
           raw_answers: {
             ...(r.raw_answers || {}),
             user_email: userEmail || null
           },
-          created_at: new Date().toISOString()
+          created_at: r.created_at || new Date().toISOString()
         };
-        const { error } = await client.from('survey_responses').insert([payload]);
-        if (!error) synced++;
+
+        const res = await fetch(`${cleanUrl}/rest/v1/survey_responses`, {
+          method: 'POST',
+          headers: {
+            'apikey': config.anonKey,
+            'Authorization': `Bearer ${config.anonKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) synced++;
       } catch (e) {
         console.warn('Sync record skipped:', e);
       }
@@ -309,6 +440,31 @@ class SupabaseService {
   }
 
   async fetchSurveyResponses(limit = 100) {
+    const config = this.getConfig();
+    if (config.url && config.anonKey) {
+      try {
+        const cleanUrl = config.url.replace(/\/$/, '');
+        const res = await fetch(
+          `${cleanUrl}/rest/v1/survey_responses?select=*&order=created_at.desc&limit=${limit}`,
+          {
+            headers: {
+              'apikey': config.anonKey,
+              'Authorization': `Bearer ${config.anonKey}`
+            }
+          }
+        );
+
+        if (res.ok) {
+          const data = await res.json().catch(() => []);
+          if (Array.isArray(data)) {
+            return { success: true, data, isCloud: true };
+          }
+        }
+      } catch (err) {
+        console.warn('Direct fetch of survey responses failed:', err);
+      }
+    }
+
     const client = this.getClient();
     if (client) {
       try {
@@ -333,7 +489,7 @@ class SupabaseService {
   // ==============================================================
   async saveQuizAttempt(attempt) {
     const payload = {
-      user_id: attempt.userId || null,
+      user_id: attempt.userId && isValidUUID(attempt.userId) ? attempt.userId : null,
       quiz_type: attempt.quizType || 'standard',
       quiz_topic: attempt.topic || 'General Financial Literacy',
       score: attempt.score,
@@ -342,7 +498,24 @@ class SupabaseService {
       completed_at: new Date().toISOString()
     };
 
-    if (this.isConfigured()) {
+    const config = this.getConfig();
+    if (config.url && config.anonKey) {
+      try {
+        const cleanUrl = config.url.replace(/\/$/, '');
+        await fetch(`${cleanUrl}/rest/v1/quiz_attempts`, {
+          method: 'POST',
+          headers: {
+            'apikey': config.anonKey,
+            'Authorization': `Bearer ${config.anonKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+        return;
+      } catch (e) {}
+    }
+
+    if (this.isConfigured() && this.client) {
       try {
         await this.client.from('quiz_attempts').insert([payload]);
       } catch (e) {
@@ -386,7 +559,7 @@ class SupabaseService {
     const effectiveRole = isOwner ? 'admin' : 'learner';
     
     // 1. If Supabase is connected, attempt Supabase Auth
-    if (this.isConfigured()) {
+    if (this.isConfigured() && this.getClient()) {
       try {
         const { data: authData, error: authError } = await this.client.auth.signUp({
           email: cleanEmail,
@@ -447,8 +620,8 @@ class SupabaseService {
     const passwordHash = await this.hashPassword(password, salt);
 
     const newUser = {
-      id: `usr_local_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      fullName: fullName.trim(),
+      id: `usr_${Date.now()}`,
+      fullName: fullName,
       email: cleanEmail,
       passwordHash: passwordHash,
       salt: salt,
@@ -480,7 +653,7 @@ class SupabaseService {
     const isOwner = cleanEmail === ADMIN_EMAIL;
 
     // 1. If Supabase is connected, try Supabase Auth
-    if (this.isConfigured()) {
+    if (this.isConfigured() && this.getClient()) {
       try {
         const { data, error } = await this.client.auth.signInWithPassword({
           email: cleanEmail,

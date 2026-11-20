@@ -155,31 +155,49 @@ class StateManager {
         const profile = {
           id: row.id,
           demographics: {
-            age_group: row.age_group,
-            education: row.education,
-            occupation: row.occupation,
-            income_range: row.income_range,
-            location: row.location,
+            age_group: row.age_group || '18-24 years',
+            education: row.education || 'Undergraduate Degree',
+            occupation: row.occupation || 'Student',
+            income_range: row.income_range || 'Under ₹2,50,000',
+            location: row.location || 'Maharashtra',
             consent: true
           },
           categoryScores: {
-            knowledge: Number(row.knowledge_score),
-            saving: Number(row.saving_score),
-            investing: Number(row.investment_score),
-            debt: Number(row.debt_score),
-            insurance: Number(row.insurance_score)
+            knowledge: Number(row.knowledge_score || 0),
+            saving: Number(row.saving_score || 0),
+            investing: Number(row.investment_score || 0),
+            debt: Number(row.debt_score || 0),
+            insurance: Number(row.insurance_score || 0)
           },
-          overallScore: Number(row.overall_score),
-          literacyLevel: row.literacy_level,
+          overallScore: Number(row.overall_score || 0),
+          literacyLevel: row.literacy_level || 'Developing',
+          levelColor: row.overall_score >= 81 ? '#10B981' : row.overall_score >= 61 ? '#0284C7' : row.overall_score >= 41 ? '#F59E0B' : '#EF4444',
+          levelDescription: row.overall_score >= 81 ? 
+            'Outstanding financial acumen! You possess strong command over core economics, disciplined savings habits, diverse investments, and sound risk mitigation.' :
+            row.overall_score >= 61 ? 
+            'Solid financial understanding! You maintain good day-to-day money habits and basic investment awareness, with great opportunities to optimize risk and compounding.' :
+            row.overall_score >= 41 ?
+            'You understand key foundational principles, but certain areas such as long-term investing, debt reduction, or insurance coverage need reinforcement.' :
+            'You are at the start of your financial literacy journey. Developing structured budgeting, debt caution, and basic compounding knowledge will unlock major improvements.',
           strengths: [
-            row.saving_score >= 70 ? 'Saving & Emergency Funds' : null,
-            row.knowledge_score >= 70 ? 'Financial Fundamentals' : null,
-            row.investment_score >= 70 ? 'Investment Literacy' : null
+            Number(row.saving_score) >= 70 ? 'Saving & Emergency Funds' : null,
+            Number(row.knowledge_score) >= 70 ? 'Financial Fundamentals' : null,
+            Number(row.investment_score) >= 70 ? 'Investment Literacy' : null,
+            Number(row.debt_score) >= 70 ? 'Debt Management' : null,
+            Number(row.insurance_score) >= 70 ? 'Risk Protection' : null
           ].filter(Boolean),
           weaknesses: [
-            row.insurance_score < 60 ? 'Risk & Insurance Planning' : null,
-            row.debt_score < 60 ? 'Debt & Credit Management' : null,
-            row.investment_score < 60 ? 'Compounding & Investing' : null
+            Number(row.insurance_score) < 60 ? 'Risk & Insurance Planning' : null,
+            Number(row.debt_score) < 60 ? 'Debt & Credit Management' : null,
+            Number(row.investment_score) < 60 ? 'Compounding & Investing' : null,
+            Number(row.saving_score) < 60 ? 'Emergency Buffer & Savings' : null,
+            Number(row.knowledge_score) < 60 ? 'Economic Fundamentals' : null
+          ].filter(Boolean),
+          recommendations: [
+            Number(row.saving_score) < 65 ? 'budgeting' : null,
+            Number(row.investment_score) < 65 ? 'investing' : null,
+            Number(row.debt_score) < 65 ? 'debt' : null,
+            Number(row.insurance_score) < 65 ? 'insurance' : null
           ].filter(Boolean),
           answers: row.raw_answers || {},
           created_at: row.created_at
@@ -212,6 +230,10 @@ class StateManager {
     this.surveyProgress.answers[questionId] = answer;
     this.persistSurveyProgress();
     this.notify('survey');
+  }
+
+  setSurveyAnswer(questionId, answerIndex) {
+    this.recordAnswer(questionId, answerIndex);
   }
 
   persistSurveyProgress() {
@@ -248,28 +270,51 @@ class StateManager {
     this.saveToStorage(profileKey, profile);
 
     const userEmail = (this.currentUser?.email || '').toLowerCase().trim();
+    const demographics = profile.demographics || {};
+    const ageGroup = (demographics.age_group || '').trim() || '18-24 years';
+    const education = (demographics.education || '').trim() || 'Undergraduate Degree';
+    const occupation = (demographics.occupation || '').trim() || 'Student';
+    const incomeRange = (demographics.income_range || '').trim() || 'Under ₹2,50,000';
+    const location = (demographics.location || '').trim() || 'Maharashtra';
+
+    const scores = profile.categoryScores || {};
+    const knowledgeScore = Number(scores.knowledge ?? 0);
+    const savingScore = Number(scores.saving ?? 0);
+    const investmentScore = Number(scores.investing ?? scores.investment ?? 0);
+    const debtScore = Number(scores.debt ?? 0);
+    const insuranceScore = Number(scores.insurance ?? 0);
+    const overallScore = Number(profile.overallScore ?? 0);
+
+    let literacyLevel = profile.literacyLevel || 'Developing';
+    if (!['Beginner', 'Developing', 'Good', 'Excellent'].includes(literacyLevel)) {
+      if (overallScore >= 81) literacyLevel = 'Excellent';
+      else if (overallScore >= 61) literacyLevel = 'Good';
+      else if (overallScore >= 41) literacyLevel = 'Developing';
+      else literacyLevel = 'Beginner';
+    }
+
     const record = {
       id: `user_${Date.now()}`,
       user_id: this.currentUser?.id || null,
       email: userEmail,
-      session_id: userEmail || null,
-      age_group: profile.demographics.age_group || '18-24 years',
-      education: profile.demographics.education || 'Undergraduate Degree',
-      occupation: profile.demographics.occupation || 'Student',
-      income_range: profile.demographics.income_range || 'Under ₹2,50,000',
-      location: profile.demographics.location || 'Maharashtra',
-      knowledge_score: profile.categoryScores.knowledge,
-      saving_score: profile.categoryScores.saving,
-      investment_score: profile.categoryScores.investing,
-      debt_score: profile.categoryScores.debt,
-      insurance_score: profile.categoryScores.insurance,
-      overall_score: profile.overallScore,
-      literacy_level: profile.literacyLevel,
-      budgetsRegularly: profile.categoryScores.saving >= 50,
-      savesRegularly: profile.categoryScores.saving >= 50,
-      invests: profile.categoryScores.investing >= 50,
-      hasEmergencyFund: profile.categoryScores.saving >= 65,
-      hasInsurance: profile.categoryScores.insurance >= 60,
+      session_id: userEmail || `guest_${Date.now()}`,
+      age_group: ageGroup,
+      education: education,
+      occupation: occupation,
+      income_range: incomeRange,
+      location: location,
+      knowledge_score: knowledgeScore,
+      saving_score: savingScore,
+      investment_score: investmentScore,
+      debt_score: debtScore,
+      insurance_score: insuranceScore,
+      overall_score: overallScore,
+      literacy_level: literacyLevel,
+      budgets_regularly: Boolean(scores.saving >= 50),
+      saves_regularly: Boolean(scores.saving >= 50),
+      invests: Boolean(scores.investing >= 50),
+      has_emergency_fund: Boolean(scores.saving >= 65),
+      has_insurance: Boolean(scores.insurance >= 60),
       raw_answers: profile.answers || {},
       created_at: new Date().toISOString()
     };
@@ -277,12 +322,12 @@ class StateManager {
     // Also add to anonymized research dataset locally
     this.addAnonymizedResearchRecord(record);
 
-    // Sync to Supabase Cloud Database immediately
+    // Sync to Supabase Cloud Database immediately via direct native fetch
     let cloudRes = null;
     try {
       cloudRes = await supabaseService.saveSurveyResponse(record);
       if (cloudRes?.isCloud) {
-        console.log('Survey successfully pushed to Supabase PostgreSQL database in real time!');
+        console.log('✅ Survey successfully pushed to Supabase PostgreSQL database in real time!');
       }
     } catch (e) {
       console.warn('Supabase automatic sync skipped:', e);

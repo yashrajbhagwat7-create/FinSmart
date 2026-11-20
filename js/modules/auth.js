@@ -406,13 +406,18 @@ export function renderRegisterPage(container) {
 // ==============================================================
 // 3. USER PROFILE DASHBOARD
 // ==============================================================
-export function renderProfilePage(container) {
+export async function renderProfilePage(container) {
   if (!container) return;
 
   const user = state.currentUser;
   if (!user) {
     navigateTo('login');
     return;
+  }
+
+  // Cross-device cloud sync: If user profile not yet loaded into active memory, fetch from Supabase
+  if (!state.userProfile && user.email) {
+    await state.fetchCloudSurveyForCurrentUser(user);
   }
 
   const profile = state.userProfile;

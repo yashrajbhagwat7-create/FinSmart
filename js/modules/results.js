@@ -12,8 +12,23 @@ import { openLearnTopicModal } from './learn.js';
 
 let radarChartInstance = null;
 
-export function renderResultsDashboard(container) {
+export async function renderResultsDashboard(container) {
   if (!container) return;
+
+  // Cross-device cloud sync: If user is authenticated on a new device with no local survey cache, retrieve from Supabase
+  if (!state.userProfile && state.currentUser?.email) {
+    container.innerHTML = `
+      <div class="max-w-3xl mx-auto px-4 py-24 text-center">
+        <div class="w-12 h-12 mx-auto mb-4 text-emerald-600 animate-spin flex items-center justify-center">
+          <i data-lucide="loader-2" class="w-8 h-8"></i>
+        </div>
+        <p class="text-slate-800 font-semibold text-base">Retrieving your survey diagnostics...</p>
+        <p class="text-slate-500 text-xs mt-1">Fetching financial literacy profile from cloud database</p>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    await state.fetchCloudSurveyForCurrentUser(state.currentUser);
+  }
 
   const profile = state.userProfile;
 
