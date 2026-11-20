@@ -83,7 +83,7 @@ FinSmart is a modern, responsive, fintech-grade web application built to assess,
 - **Dynamic Demographic Filters:** Filter by Age Group, Education, Occupation, and Income Range to update all charts and KPI metrics on the fly.
 
 ### 7. Protected Admin Portal & CSV Export
-- Passcode-protected administrative view (`admin123`, with quick demo fill helper).
+- Authenticated administrator view restricted strictly to the verified platform administrator email & password (`yashrajbhagwat7@gmail.com`).
 - Real-time submission logs (anonymized demographic cohort, category scores, date).
 - **RFC-4180 CSV Export:** Download the full anonymous research dataset for statistical analysis in Excel, Python, or R.
 - Ability to re-seed or restore baseline research data.

@@ -9,7 +9,7 @@
  */
 
 import { state } from './state.js';
-import { supabaseService } from './supabaseService.js';
+import { supabaseService, ADMIN_EMAIL } from './supabaseService.js';
 import { showToast, navigateTo } from './router.js';
 import { AGE_GROUPS, EDUCATION_LEVELS, OCCUPATIONS, INCOME_RANGES, STATES_REGIONS } from '../data/sampleResearchData.js';
 
@@ -96,27 +96,6 @@ export function renderLoginPage(container) {
           </button>
         </form>
 
-        <!-- Demo Accounts Evaluation Helper -->
-        <div class="mt-6 pt-5 border-t border-slate-100">
-          <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider text-center mb-2.5">
-            Quick Demo Sign-In (Evaluation)
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <button 
-              type="button" 
-              id="btn-fill-learner" 
-              class="px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/70 text-emerald-800 text-[11px] font-semibold transition text-center truncate">
-              🎓 Learner Demo
-            </button>
-            <button 
-              type="button" 
-              id="btn-fill-researcher" 
-              class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold transition text-center truncate">
-              🔬 Researcher Demo
-            </button>
-          </div>
-        </div>
-
         <!-- Registration Link -->
         <div class="mt-6 text-center text-xs text-slate-600">
           Don't have an account yet? 
@@ -150,19 +129,6 @@ export function renderLoginPage(container) {
     passInput.setAttribute('type', isPass ? 'text' : 'password');
     togglePassBtn.innerHTML = `<i data-lucide="${isPass ? 'eye-off' : 'eye'}" class="w-4 h-4"></i>`;
     if (window.lucide) window.lucide.createIcons();
-  });
-
-  // Demo helpers
-  container.querySelector('#btn-fill-learner')?.addEventListener('click', () => {
-    emailInput.value = 'learner@finsmart.edu';
-    passInput.value = 'Learner@123';
-    errorBox.classList.add('hidden');
-  });
-
-  container.querySelector('#btn-fill-researcher')?.addEventListener('click', () => {
-    emailInput.value = 'researcher@finsmart.edu';
-    passInput.value = 'Research@123';
-    errorBox.classList.add('hidden');
   });
 
   // Handle Submit
@@ -231,12 +197,12 @@ export function renderRegisterPage(container) {
             </div>
 
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">Account Role</label>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">User Category</label>
               <select id="reg-role" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white">
-                <option value="learner">Student / Young Adult (18-24)</option>
-                <option value="learner">Salaried Professional</option>
-                <option value="educator">Educator / Faculty</option>
-                <option value="researcher">Academic Researcher</option>
+                <option value="student">Student / Young Adult (18-24)</option>
+                <option value="professional">Salaried Professional</option>
+                <option value="self_employed">Self-Employed / Freelancer</option>
+                <option value="general">General Learner</option>
               </select>
             </div>
           </div>
@@ -404,19 +370,25 @@ export function renderRegisterPage(container) {
       return;
     }
 
+    const userCategory = roleSelect.value;
+    const occLabel = userCategory === 'student' ? 'Student' : 
+                     userCategory === 'professional' ? 'Salaried Professional' :
+                     userCategory === 'self_employed' ? 'Self-Employed' : 'General Learner';
+
     const demographics = {
       age_group: container.querySelector('#reg-age')?.value || '18-24 years',
       education: container.querySelector('#reg-edu')?.value || 'Undergraduate Degree',
-      occupation: role === 'learner' ? 'Student' : 'Salaried Professional',
+      occupation: occLabel,
       income_range: 'Under ₹2,50,000',
       location: 'Maharashtra'
     };
 
+    const isAdmin = email.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase();
     const res = await supabaseService.registerUser({
       fullName: name,
       email: email,
       password: password,
-      role: role,
+      role: isAdmin ? 'admin' : 'learner',
       demographics: demographics
     });
 
@@ -465,9 +437,9 @@ export function renderProfilePage(container) {
               <div class="flex items-center gap-2 mb-1">
                 <h1 class="text-2xl font-bold tracking-tight text-white">${user.fullName}</h1>
                 <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                  user.role === 'researcher' || user.role === 'admin' ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' : 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/30'
+                  user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' : 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/30'
                 }">
-                  ${user.role}
+                  ${user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'Platform Administrator' : 'Member'}
                 </span>
               </div>
               <p class="text-slate-300 text-xs sm:text-sm">${user.email}</p>
@@ -480,7 +452,7 @@ export function renderProfilePage(container) {
           </div>
 
           <div class="flex flex-wrap items-center gap-2.5">
-            ${user.role === 'researcher' || user.role === 'admin' ? `
+            ${user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? `
               <a 
                 href="#admin" 
                 class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-navy-800 hover:bg-navy-700 text-amber-300 text-xs font-semibold border border-navy-700 transition">

@@ -5,8 +5,8 @@
  */
 
 import { state } from './state.js';
-import { showToast } from './router.js';
-import { supabaseService } from './supabaseService.js';
+import { showToast, navigateTo } from './router.js';
+import { supabaseService, ADMIN_EMAIL } from './supabaseService.js';
 import { openSupabaseConfigModal } from './auth.js';
 
 let isAdminAuthenticated = false;
@@ -14,8 +14,17 @@ let isAdminAuthenticated = false;
 export function renderAdminDashboard(container) {
   if (!container) return;
 
-  const isRoleAuth = state.currentUser && (state.currentUser.role === 'researcher' || state.currentUser.role === 'admin');
-  if (!isAdminAuthenticated && !isRoleAuth) {
+  const currentUser = state.currentUser;
+  const isOwnerSession = currentUser && currentUser.email && currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+  // If a standard user is signed in, display access restricted message
+  if (currentUser && !isOwnerSession) {
+    renderAccessDenied(container);
+    return;
+  }
+
+  // If not authenticated as the owner, render the admin login portal
+  if (!isAdminAuthenticated && !isOwnerSession) {
     renderAdminLogin(container);
     return;
   }
@@ -40,7 +49,7 @@ export function renderAdminDashboard(container) {
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <div class="inline-flex items-center gap-2 px-3 py-1 bg-amber-100 text-amber-900 rounded-full text-xs font-semibold uppercase tracking-wider mb-2">
-            <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> Admin & Research Control Panel
+            <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> Platform Administrator Panel (${ADMIN_EMAIL})
           </div>
           <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Research Data Repository</h1>
           <p class="text-slate-600 text-xs sm:text-sm mt-1">
@@ -226,8 +235,58 @@ export function renderAdminDashboard(container) {
   // Logout
   container.querySelector('#btn-admin-logout')?.addEventListener('click', () => {
     isAdminAuthenticated = false;
+    supabaseService.logoutUser();
+    state.setCurrentUser(null);
     renderAdminDashboard(container);
     showToast('Logged out of Admin Panel.', 'info');
+  });
+}
+
+function renderAccessDenied(container) {
+  const user = state.currentUser;
+  container.innerHTML = `
+    <div class="max-w-md mx-auto px-4 py-16 text-center">
+      <div class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200">
+        <div class="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-4">
+          <i data-lucide="shield-alert" class="w-7 h-7"></i>
+        </div>
+        <h1 class="text-2xl font-bold text-slate-900">Access Restricted</h1>
+        <p class="text-xs text-slate-600 mt-2 leading-relaxed">
+          You are currently signed in as <strong class="text-slate-800">${user?.email || 'a standard user'}</strong>.
+        </p>
+        <p class="text-xs text-rose-600 font-semibold mt-1.5 p-2 bg-rose-50 rounded-xl border border-rose-200">
+          Admin privileges are strictly restricted to the verified platform owner (${ADMIN_EMAIL}).
+        </p>
+
+        <div class="mt-6 flex flex-col gap-2.5">
+          <button 
+            type="button" 
+            id="btn-admin-switch-account" 
+            class="w-full py-2.5 rounded-xl bg-navy-900 hover:bg-navy-800 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2">
+            <i data-lucide="log-in" class="w-4 h-4"></i> Sign In as Administrator
+          </button>
+          <button 
+            type="button" 
+            id="btn-admin-return-profile" 
+            class="w-full py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition">
+            Return to My User Profile
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  if (window.lucide) window.lucide.createIcons();
+
+  container.querySelector('#btn-admin-switch-account')?.addEventListener('click', () => {
+    supabaseService.logoutUser();
+    state.setCurrentUser(null);
+    isAdminAuthenticated = false;
+    renderAdminLogin(container);
+  });
+
+  container.querySelector('#btn-admin-return-profile')?.addEventListener('click', () => {
+    navigateTo('profile');
   });
 }
 
@@ -235,46 +294,52 @@ function renderAdminLogin(container) {
   container.innerHTML = `
     <div class="max-w-md mx-auto px-4 py-16">
       <div class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 text-center">
-        <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4">
-          <i data-lucide="lock" class="w-6 h-6"></i>
+        <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mx-auto mb-4">
+          <i data-lucide="shield-check" class="w-6 h-6"></i>
         </div>
 
-        <h1 class="text-2xl font-bold text-slate-900">Admin Authentication</h1>
+        <h1 class="text-2xl font-bold text-slate-900">Administrator Portal</h1>
         <p class="text-xs text-slate-600 mt-1">
-          Access is restricted to authorized financial researchers and platform administrators.
+          Restricted access. Sign in with the verified platform administrator email & password.
         </p>
 
         <form id="admin-login-form" class="mt-6 space-y-4 text-left" onsubmit="return false;">
           <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">Administrative Passcode</label>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Administrator Email</label>
+            <input 
+              type="email" 
+              id="admin-email" 
+              value="${ADMIN_EMAIL}" 
+              placeholder="${ADMIN_EMAIL}" 
+              class="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-emerald-500 bg-slate-50 font-medium text-slate-800">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Administrator Password</label>
             <input 
               type="password" 
-              id="admin-passcode" 
-              placeholder="Enter admin passcode" 
+              id="admin-password" 
+              required
+              placeholder="Enter administrator password" 
               class="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-emerald-500">
           </div>
 
-          <div id="login-error" class="text-rose-600 text-xs hidden font-medium">
-            Incorrect passcode. Please try again.
+          <div id="login-error" class="text-rose-600 text-xs hidden font-medium p-2.5 rounded-xl bg-rose-50 border border-rose-200">
           </div>
 
           <button 
             type="submit" 
             id="btn-admin-submit" 
-            class="w-full py-3 rounded-xl bg-navy-900 hover:bg-navy-800 text-white font-bold text-sm shadow-md transition">
-            Unlock Admin Panel
+            class="w-full py-3 rounded-xl bg-navy-900 hover:bg-navy-800 text-white font-bold text-sm shadow-md transition flex items-center justify-center gap-2">
+            <i data-lucide="lock" class="w-4 h-4"></i> Unlock Admin Panel
           </button>
-
-          <!-- Convenient Quick Helper for Demo Evaluation -->
-          <div class="pt-3 border-t border-slate-100 text-center">
-            <button 
-              type="button" 
-              id="btn-quick-fill-admin" 
-              class="text-xs text-emerald-700 hover:text-emerald-800 font-semibold underline">
-              Demo Helper: Fill default passcode ("admin123")
-            </button>
-          </div>
         </form>
+
+        <div class="mt-6 pt-4 border-t border-slate-100 text-center">
+          <a href="#home" class="text-xs text-slate-500 hover:text-slate-800 transition">
+            ← Return to FinSmart Home
+          </a>
+        </div>
       </div>
     </div>
   `;
@@ -282,21 +347,55 @@ function renderAdminLogin(container) {
   if (window.lucide) window.lucide.createIcons();
 
   const form = container.querySelector('#admin-login-form');
-  const passInput = container.querySelector('#admin-passcode');
+  const emailInput = container.querySelector('#admin-email');
+  const passInput = container.querySelector('#admin-password');
   const errEl = container.querySelector('#login-error');
-  const quickBtn = container.querySelector('#btn-quick-fill-admin');
+  const submitBtn = container.querySelector('#btn-admin-submit');
 
-  quickBtn?.addEventListener('click', () => {
-    passInput.value = 'admin123';
-  });
+  form?.addEventListener('submit', async () => {
+    if (errEl) errEl.classList.add('hidden');
+    const email = emailInput?.value.trim().toLowerCase() || '';
+    const password = passInput?.value || '';
 
-  form?.addEventListener('submit', () => {
-    if (passInput.value.trim() === 'admin123') {
+    if (!email || !password) {
+      if (errEl) {
+        errEl.textContent = 'Please enter both administrator email and password.';
+        errEl.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (email !== ADMIN_EMAIL.toLowerCase()) {
+      if (errEl) {
+        errEl.textContent = `Access Denied: Only the platform administrator (${ADMIN_EMAIL}) has access to this portal.`;
+        errEl.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Authenticating...`;
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    const res = await supabaseService.loginUser(email, password);
+
+    if (res.success && res.user && res.user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
       isAdminAuthenticated = true;
+      state.setCurrentUser(res.user);
       renderAdminDashboard(container);
-      showToast('Welcome to the Admin Management Panel!', 'success');
+      showToast('Administrator authenticated successfully!', 'success');
     } else {
-      errEl?.classList.remove('hidden');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<i data-lucide="lock" class="w-4 h-4"></i> Unlock Admin Panel`;
+        if (window.lucide) window.lucide.createIcons();
+      }
+      if (errEl) {
+        errEl.textContent = res.error || 'Authentication failed. Please verify your password.';
+        errEl.classList.remove('hidden');
+      }
     }
   });
 }

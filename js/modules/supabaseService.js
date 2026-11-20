@@ -11,6 +11,8 @@ const STORAGE_KEY_CONFIG = 'finsmart_supabase_config_v1';
 const STORAGE_KEY_LOCAL_USERS = 'finsmart_local_users_v1';
 const STORAGE_KEY_CURRENT_SESSION = 'finsmart_auth_session_v1';
 
+export const ADMIN_EMAIL = 'yashrajbhagwat7@gmail.com';
+
 class SupabaseService {
   constructor() {
     this.client = null;
@@ -245,6 +247,9 @@ class SupabaseService {
 
   async registerUser({ fullName, email, password, role = 'learner', demographics = {} }) {
     const cleanEmail = email.toLowerCase().trim();
+    // Enforce role: Only the platform administrator receives 'admin'; standard visitors receive 'learner'
+    const isOwner = cleanEmail === ADMIN_EMAIL;
+    const effectiveRole = isOwner ? 'admin' : 'learner';
     
     // 1. If Supabase is connected, attempt Supabase Auth
     if (this.isConfigured()) {
@@ -255,7 +260,7 @@ class SupabaseService {
           options: {
             data: {
               full_name: fullName,
-              role: role,
+              role: effectiveRole,
               ...demographics
             }
           }
@@ -271,7 +276,7 @@ class SupabaseService {
             auth_user_id: authData.user.id,
             email: cleanEmail,
             full_name: fullName,
-            role: role,
+            role: effectiveRole,
             demographic_age_group: demographics.age_group || null,
             demographic_education: demographics.education || null,
             demographic_occupation: demographics.occupation || null,
@@ -284,7 +289,7 @@ class SupabaseService {
           id: authData.user?.id || `usr_${Date.now()}`,
           email: cleanEmail,
           fullName: fullName,
-          role: role,
+          role: effectiveRole,
           demographics: demographics,
           isCloud: true,
           createdAt: new Date().toISOString()
@@ -313,7 +318,7 @@ class SupabaseService {
       email: cleanEmail,
       passwordHash: passwordHash,
       salt: salt,
-      role: role,
+      role: effectiveRole,
       demographics: demographics,
       isCloud: false,
       createdAt: new Date().toISOString()
@@ -338,6 +343,7 @@ class SupabaseService {
 
   async loginUser(email, password) {
     const cleanEmail = email.toLowerCase().trim();
+    const isOwner = cleanEmail === ADMIN_EMAIL;
 
     // 1. If Supabase is connected, try Supabase Auth
     if (this.isConfigured()) {
@@ -352,8 +358,8 @@ class SupabaseService {
           const userObj = {
             id: data.user.id,
             email: cleanEmail,
-            fullName: userMeta.full_name || cleanEmail.split('@')[0],
-            role: userMeta.role || 'learner',
+            fullName: userMeta.full_name || (isOwner ? 'Yashraj Bhagvat' : cleanEmail.split('@')[0]),
+            role: isOwner ? 'admin' : (userMeta.role || 'learner'),
             demographics: {
               age_group: userMeta.age_group || '',
               education: userMeta.education || '',
@@ -365,7 +371,11 @@ class SupabaseService {
             createdAt: data.user.created_at
           };
           this.setSessionUser(userObj);
-          return { success: true, user: userObj, message: 'Logged in successfully via Supabase Cloud!' };
+          return { 
+            success: true, 
+            user: userObj, 
+            message: isOwner ? 'Welcome back, Yashraj (Platform Administrator)!' : 'Logged in successfully via Supabase Cloud!' 
+          };
         }
       } catch (err) {
         console.warn('Supabase login error, checking local store:', err.message);
@@ -374,51 +384,37 @@ class SupabaseService {
 
     // 2. Check local accounts
     const users = this.getLocalUsers();
-    const user = users.find(u => u.email.toLowerCase() === cleanEmail);
+    let user = users.find(u => u.email.toLowerCase() === cleanEmail);
 
     if (!user) {
-      // Default Demo Accounts for Evaluation
-      if (cleanEmail === 'learner@finsmart.edu' && password === 'Learner@123') {
-        const demoUser = {
-          id: 'demo_learner_01',
-          fullName: 'Swayam Bidimani (Student)',
-          email: 'learner@finsmart.edu',
-          role: 'learner',
+      // If the administrator is logging in locally for the first time without prior registration,
+      // bootstrap the admin account securely with the credentials supplied
+      if (isOwner && password && password.length >= 6) {
+        const salt = Math.random().toString(36).substring(2, 15);
+        const passwordHash = await this.hashPassword(password, salt);
+        const adminAccount = {
+          id: 'admin_yashraj_01',
+          fullName: 'Yashraj Bhagvat (Platform Administrator)',
+          email: ADMIN_EMAIL,
+          passwordHash: passwordHash,
+          salt: salt,
+          role: 'admin',
           demographics: {
             age_group: '18-24 years',
             education: 'Undergraduate Degree',
-            occupation: 'Student',
-            income_range: 'Under ₹2,50,000',
-            location: 'Maharashtra'
-          },
-          isCloud: false,
-          createdAt: new Date().toISOString()
-        };
-        this.setSessionUser(demoUser);
-        return { success: true, user: demoUser, message: 'Welcome back, Swayam!' };
-      }
-
-      if (cleanEmail === 'researcher@finsmart.edu' && password === 'Research@123') {
-        const demoAdmin = {
-          id: 'demo_researcher_01',
-          fullName: 'Prof. Yashraj Bhagvat (Lead Researcher)',
-          email: 'researcher@finsmart.edu',
-          role: 'researcher',
-          demographics: {
-            age_group: '25-34 years',
-            education: 'Master / Post-Graduate',
-            occupation: 'Educator / Faculty',
+            occupation: 'Lead Investigator / Administrator',
             income_range: '₹5,00,000 - ₹10,00,000',
             location: 'Maharashtra'
           },
           isCloud: false,
           createdAt: new Date().toISOString()
         };
-        this.setSessionUser(demoAdmin);
-        return { success: true, user: demoAdmin, message: 'Welcome back, Professor!' };
+        users.push(adminAccount);
+        this.saveLocalUsers(users);
+        user = adminAccount;
+      } else {
+        return { success: false, error: 'Invalid email or password. Please check your credentials.' };
       }
-
-      return { success: false, error: 'Invalid email or password. Please check your credentials.' };
     }
 
     const testHash = await this.hashPassword(password, user.salt);
@@ -430,14 +426,18 @@ class SupabaseService {
       id: user.id,
       fullName: user.fullName,
       email: user.email,
-      role: user.role,
+      role: isOwner ? 'admin' : (user.role || 'learner'),
       demographics: user.demographics,
       isCloud: false,
       createdAt: user.createdAt
     };
 
     this.setSessionUser(userSession);
-    return { success: true, user: userSession, message: `Welcome back, ${user.fullName}!` };
+    return { 
+      success: true, 
+      user: userSession, 
+      message: isOwner ? 'Welcome back, Yashraj (Platform Administrator)!' : `Welcome back, ${user.fullName}!` 
+    };
   }
 
   logoutUser() {
