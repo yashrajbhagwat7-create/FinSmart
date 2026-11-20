@@ -127,6 +127,18 @@ CREATE POLICY "Users can manage own learning progress"
 ON public.learning_progress FOR ALL USING (true);
 
 -- ==============================================================================
+-- 5. GRANTS & ROLES PERMISSIONS (CRITICAL FOR SUPABASE ANON ACCESS)
+-- ==============================================================================
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO anon, authenticated, service_role;
+
+-- ==============================================================================
 -- SEED INITIAL CEP REVIEW 1 BENCHMARK DATA (61 Respondents Cohort)
 -- ==============================================================================
 COMMENT ON TABLE public.survey_responses IS 'FinSmart Survey Database - Backing empirical financial literacy research';

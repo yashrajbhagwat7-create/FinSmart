@@ -103,6 +103,13 @@ class SupabaseService {
           this.notifyListeners();
           return { success: true, warning: this.lastError };
         }
+
+        if (error.code === '42501' || (error.message && error.message.includes('permission denied'))) {
+          this.status = 'error';
+          this.lastError = 'PostgreSQL Permission Denied: Run "GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;" in Supabase SQL Editor.';
+          this.notifyListeners();
+          return { success: false, error: this.lastError };
+        }
         this.status = 'error';
         this.lastError = error.message;
         this.notifyListeners();
