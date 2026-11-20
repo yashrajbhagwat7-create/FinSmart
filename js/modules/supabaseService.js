@@ -181,10 +181,6 @@ class SupabaseService {
   // ==============================================================
   async saveSurveyResponse(responsePayload) {
     const userEmail = (responsePayload.email || responsePayload.session_id || this.getSessionUser()?.email || '').toLowerCase().trim();
-    
-    // Ensure user_id is only passed if it is a valid UUID to prevent PostgreSQL 22P02 error
-    const rawUserId = responsePayload.user_id || this.getSessionUser()?.id || null;
-    const validUserId = isValidUUID(rawUserId) ? rawUserId : null;
 
     // Demographics defaults
     const ageGroup = (responsePayload.age_group || '').trim() || '18-24 years';
@@ -210,8 +206,10 @@ class SupabaseService {
       else literacyLevel = 'Beginner';
     }
 
+    // Always keep user_id as null to prevent foreign key constraint violations on public.profiles(id).
+    // The session_id column reliably stores userEmail for indexing and cross-device retrieval.
     const record = {
-      user_id: validUserId,
+      user_id: null,
       session_id: userEmail || `guest_${Date.now()}`,
       age_group: ageGroup,
       education: education,
@@ -389,7 +387,7 @@ class SupabaseService {
         }
 
         const payload = {
-          user_id: validUserId,
+          user_id: null,
           session_id: userEmail || `guest_${Date.now()}`,
           age_group: r.age_group || '18-24 years',
           education: r.education || 'Undergraduate Degree',
@@ -485,7 +483,7 @@ class SupabaseService {
   // ==============================================================
   async saveQuizAttempt(attempt) {
     const payload = {
-      user_id: attempt.userId && isValidUUID(attempt.userId) ? attempt.userId : null,
+      user_id: null,
       quiz_type: attempt.quizType || 'standard',
       quiz_topic: attempt.topic || 'General Financial Literacy',
       score: attempt.score,

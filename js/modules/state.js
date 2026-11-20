@@ -295,7 +295,7 @@ class StateManager {
 
     const record = {
       id: `user_${Date.now()}`,
-      user_id: this.currentUser?.id || null,
+      user_id: null,
       email: userEmail,
       session_id: userEmail || `guest_${Date.now()}`,
       age_group: ageGroup,
