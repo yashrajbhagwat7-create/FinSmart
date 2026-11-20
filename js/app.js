@@ -6,7 +6,6 @@
 import { initRouter } from './modules/router.js';
 import { state } from './modules/state.js';
 import { initApiKeyControls, openApiKeyModal } from './modules/apiKeyModal.js';
-import { openSupabaseConfigModal } from './modules/auth.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   // 1. Mobile Hamburger Menu Toggle
@@ -53,15 +52,6 @@ document.addEventListener('DOMContentLoaded', () => {
     footerKeyBtn.addEventListener('click', (e) => {
       e.preventDefault();
       openApiKeyModal();
-    });
-  }
-
-  // Footer Supabase DB settings click
-  const footerDbBtn = document.getElementById('footer-btn-db');
-  if (footerDbBtn) {
-    footerDbBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      openSupabaseConfigModal();
     });
   }
 

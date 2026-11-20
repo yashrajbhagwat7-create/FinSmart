@@ -17,12 +17,6 @@ import { renderLoginPage, renderRegisterPage, renderProfilePage, openSupabaseCon
 
 export function initRouter() {
   window.addEventListener('hashchange', handleRouteChange);
-  
-  // Attach DB settings button listener
-  document.getElementById('btn-nav-db')?.addEventListener('click', () => {
-    openSupabaseConfigModal();
-  });
-
   handleRouteChange();
 }
 
@@ -94,7 +88,7 @@ function handleRouteChange() {
       renderProfilePage(appMain);
       break;
     case 'supabase-settings':
-      openSupabaseConfigModal();
+      renderAdminDashboard(appMain);
       break;
     default:
       renderHomePage(appMain);

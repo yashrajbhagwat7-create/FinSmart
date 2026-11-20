@@ -40,14 +40,8 @@ export function renderLoginPage(container) {
         <div class="text-center mb-6">
           <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Welcome to FinSmart</h1>
           <p class="text-xs sm:text-sm text-slate-600 mt-1">
-            Sign in to access your financial literacy score, progress history, and research diagnostics.
+            Sign in to access your financial literacy score, progress history, and learning hub.
           </p>
-          <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold ${
-            isCloudActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'
-          }">
-            <span class="w-1.5 h-1.5 rounded-full ${isCloudActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}"></span>
-            ${isCloudActive ? 'Connected to Supabase Cloud' : 'Local Encryption Mode'}
-          </div>
         </div>
 
         <!-- Login Form -->
@@ -486,12 +480,14 @@ export function renderProfilePage(container) {
           </div>
 
           <div class="flex flex-wrap items-center gap-2.5">
-            <button 
-              id="btn-open-db-config" 
-              class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-navy-800 hover:bg-navy-700 text-slate-200 text-xs font-semibold border border-navy-700 transition">
-              <i data-lucide="database" class="w-3.5 h-3.5 text-emerald-400"></i>
-              <span>Database Settings</span>
-            </button>
+            ${user.role === 'researcher' || user.role === 'admin' ? `
+              <a 
+                href="#admin" 
+                class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-navy-800 hover:bg-navy-700 text-amber-300 text-xs font-semibold border border-navy-700 transition">
+                <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i>
+                <span>Admin Portal</span>
+              </a>
+            ` : ''}
             <button 
               id="btn-profile-logout" 
               class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-navy-800 hover:bg-rose-950/40 text-slate-300 hover:text-rose-300 text-xs font-semibold border border-navy-700 transition">
@@ -502,7 +498,7 @@ export function renderProfilePage(container) {
         </div>
       </div>
 
-      <!-- Grid: Diagnostic Status & Database Details -->
+      <!-- Grid: Diagnostic Status & Learning Milestone Card -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         
         <!-- Diagnostic Score Card -->
@@ -563,38 +559,37 @@ export function renderProfilePage(container) {
           `}
         </div>
 
-        <!-- Database & Sync Status Card -->
+        <!-- Learner Milestone Card -->
         <div class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 flex flex-col justify-between">
           <div>
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <i data-lucide="database" class="w-4 h-4 text-emerald-600"></i>
-                <span>Database Sync</span>
+                <i data-lucide="award" class="w-4 h-4 text-emerald-600"></i>
+                <span>Learning Status</span>
               </h3>
-              <span class="w-2.5 h-2.5 rounded-full ${isCloud ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}"></span>
+              <span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold">Active Member</span>
             </div>
 
             <div class="space-y-3 text-xs text-slate-600">
-              <div class="p-3 rounded-xl ${isCloud ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' : 'bg-slate-50 border border-slate-200'}">
-                <div class="font-bold text-[11px] uppercase tracking-wide mb-1">Current Backend</div>
-                <div class="font-semibold">${isCloud ? 'Supabase PostgreSQL Cloud' : 'Browser Encrypted Local Store'}</div>
-                <div class="text-[10px] text-slate-500 mt-1">
-                  ${isCloud ? dbStatus.url : 'Responses cached in localStorage with WebCrypto SHA-256'}
-                </div>
+              <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                <span class="font-bold text-[11px] uppercase tracking-wide text-slate-500 block mb-1">Educational Track</span>
+                <span class="font-bold text-slate-900 text-sm block">10 Interactive Modules Available</span>
+                <p class="text-[11px] text-slate-500 mt-1">Master budgeting, debt management, compounding, and investment principles.</p>
               </div>
 
-              <p class="text-[11px] leading-relaxed">
-                Connect your Supabase project credentials anytime to store your surveys directly in the cloud PostgreSQL database.
-              </p>
+              <div class="flex items-center justify-between p-3 rounded-xl bg-emerald-50/60 border border-emerald-100 text-emerald-900 text-xs font-medium">
+                <span>Quiz Practice Access</span>
+                <span class="font-bold text-emerald-700">Unlocked</span>
+              </div>
             </div>
           </div>
 
-          <button 
-            id="btn-card-db-settings" 
-            class="mt-6 w-full py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs transition flex items-center justify-center gap-1.5">
-            <i data-lucide="settings" class="w-3.5 h-3.5"></i>
-            <span>Configure Supabase Project</span>
-          </button>
+          <a 
+            href="#learn" 
+            class="mt-6 w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition flex items-center justify-center gap-1.5">
+            <i data-lucide="book-open" class="w-3.5 h-3.5 text-emerald-600"></i>
+            <span>Continue Learning</span>
+          </a>
         </div>
 
       </div>
@@ -633,10 +628,6 @@ export function renderProfilePage(container) {
     showToast('Signed out successfully.', 'info');
     navigateTo('home');
   });
-
-  const openDbModal = () => openSupabaseConfigModal();
-  container.querySelector('#btn-open-db-config')?.addEventListener('click', openDbModal);
-  container.querySelector('#btn-card-db-settings')?.addEventListener('click', openDbModal);
 }
 
 // ==============================================================

@@ -77,7 +77,7 @@ export function renderAdminDashboard(container) {
               <span class="w-2 h-2 rounded-full ${isCloud ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}"></span>
             </div>
             <p class="text-[11px] text-slate-600">
-              ${isCloud ? `Connected to ${dbStatus.url}` : 'Surveys are persisting to browser encrypted storage. Connect Supabase for remote PostgreSQL sync.'}
+              ${isCloud ? 'Connected to remote database cluster' : 'Surveys are persisting to browser encrypted storage. Connect Supabase for remote PostgreSQL sync.'}
             </p>
           </div>
         </div>
