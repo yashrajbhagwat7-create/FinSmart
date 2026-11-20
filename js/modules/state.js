@@ -1,9 +1,11 @@
 /**
  * FinSmart Central State Management
- * Handles persistent storage, in-progress survey cache, user profile, and research dataset.
+ * Handles persistent storage, in-progress survey cache, user profile, auth session,
+ * and empirical research dataset with Supabase Cloud synchronization.
  */
 
 import { generateBaseResearchDataset } from '../data/sampleResearchData.js';
+import { supabaseService } from './supabaseService.js';
 
 const STORAGE_KEYS = {
   SURVEY_PROGRESS: 'finsmart_survey_progress_v1',
@@ -20,24 +22,27 @@ class StateManager {
   }
 
   init() {
-    // 1. In-progress survey state
+    // 1. Current Authenticated User (from Supabase or local session)
+    this.currentUser = supabaseService.getSessionUser();
+
+    // 2. In-progress survey state
     this.surveyProgress = this.loadFromStorage(STORAGE_KEYS.SURVEY_PROGRESS, {
       demographics: {
-        age_group: '',
-        education: '',
-        occupation: '',
-        income_range: '',
-        location: '',
+        age_group: this.currentUser?.demographics?.age_group || '',
+        education: this.currentUser?.demographics?.education || '',
+        occupation: this.currentUser?.demographics?.occupation || '',
+        income_range: this.currentUser?.demographics?.income_range || '',
+        location: this.currentUser?.demographics?.location || '',
         consent: false
       },
       currentStep: 0, // 0: Demographics, 1: Cat A, 2: Cat B, 3: Cat C, 4: Cat D, 5: Cat E
       answers: {}
     });
 
-    // 2. User's saved diagnostic profile
+    // 3. User's saved diagnostic profile
     this.userProfile = this.loadFromStorage(STORAGE_KEYS.USER_PROFILE, null);
 
-    // 3. Research dataset
+    // 4. Research dataset
     let storedResearch = this.loadFromStorage(STORAGE_KEYS.RESEARCH_DATA, null);
     if (!storedResearch || !Array.isArray(storedResearch) || storedResearch.length === 0) {
       storedResearch = generateBaseResearchDataset(1420);
@@ -45,7 +50,7 @@ class StateManager {
     }
     this.researchData = storedResearch;
 
-    // 4. Quiz state
+    // 5. Quiz state
     this.quizState = {
       currentIndex: 0,
       userAnswers: {}, // { [questionId]: { selectedIndex, isCorrect } }
@@ -53,7 +58,7 @@ class StateManager {
       isCompleted: false
     };
 
-    // 5. Active route
+    // 6. Active route
     this.currentRoute = window.location.hash ? window.location.hash.replace('#', '') : 'home';
   }
 
@@ -73,6 +78,22 @@ class StateManager {
     } catch (e) {
       console.warn(`Error saving ${key} to localStorage:`, e);
     }
+  }
+
+  // Auth state management
+  setCurrentUser(user) {
+    this.currentUser = user;
+    if (user?.demographics) {
+      // Pre-fill survey demographics from user profile if not already answered
+      if (!this.surveyProgress.demographics.age_group) {
+        this.surveyProgress.demographics = {
+          ...this.surveyProgress.demographics,
+          ...user.demographics
+        };
+        this.persistSurveyProgress();
+      }
+    }
+    this.notify('auth');
   }
 
   // Survey methods
@@ -101,11 +122,11 @@ class StateManager {
   clearSurveyProgress() {
     this.surveyProgress = {
       demographics: {
-        age_group: '',
-        education: '',
-        occupation: '',
-        income_range: '',
-        location: '',
+        age_group: this.currentUser?.demographics?.age_group || '',
+        education: this.currentUser?.demographics?.education || '',
+        occupation: this.currentUser?.demographics?.occupation || '',
+        income_range: this.currentUser?.demographics?.income_range || '',
+        location: this.currentUser?.demographics?.location || '',
         consent: false
       },
       currentStep: 0,
@@ -118,13 +139,13 @@ class StateManager {
   }
 
   // User Profile
-  saveUserProfile(profile) {
+  async saveUserProfile(profile) {
     this.userProfile = profile;
     this.saveToStorage(STORAGE_KEYS.USER_PROFILE, profile);
 
-    // Also add to anonymized research dataset!
-    this.addAnonymizedResearchRecord({
+    const record = {
       id: `user_${Date.now()}`,
+      user_id: this.currentUser?.id || null,
       age_group: profile.demographics.age_group || '25-34 years',
       education: profile.demographics.education || 'Undergraduate Degree',
       occupation: profile.demographics.occupation || 'Salaried Professional',
@@ -142,8 +163,19 @@ class StateManager {
       invests: profile.categoryScores.investing >= 50,
       hasEmergencyFund: profile.categoryScores.saving >= 65,
       hasInsurance: profile.categoryScores.insurance >= 60,
+      raw_answers: profile.answers || {},
       created_at: new Date().toISOString().split('T')[0]
-    });
+    };
+
+    // Also add to anonymized research dataset locally
+    this.addAnonymizedResearchRecord(record);
+
+    // Sync to Supabase Cloud Database asynchronously
+    try {
+      await supabaseService.saveSurveyResponse(record);
+    } catch (e) {
+      console.warn('Supabase sync skipped:', e);
+    }
 
     this.notify('profile');
   }

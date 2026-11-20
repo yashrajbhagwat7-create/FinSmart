@@ -42,6 +42,63 @@ export function renderInsightsDashboard(container) {
         </div>
       </div>
 
+      <!-- Primary Academic Research Spotlight: Pune CEP Cohort (N=61) -->
+      <div class="bg-gradient-to-r from-navy-950 via-navy-900 to-navy-950 text-white rounded-3xl p-6 sm:p-8 shadow-xl mb-8 relative overflow-hidden border border-navy-800">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5 pb-5 border-b border-navy-800">
+          <div>
+            <div class="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 text-emerald-400 rounded-full text-xs font-semibold uppercase tracking-wider mb-2">
+              <i data-lucide="book-marked" class="w-3.5 h-3.5"></i> Primary Empirical Baseline • Pune CEP Study
+            </div>
+            <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-white">
+              Young Adults Financial Literacy Survey (Aged 18–22)
+            </h2>
+            <p class="text-xs sm:text-sm text-slate-300 mt-1">
+              Department of Computer Engineering, Trinity College of Engineering & Research, Pune (N = 61 Validated Responses)
+            </p>
+          </div>
+          <div class="text-left md:text-right shrink-0">
+            <span class="text-xs text-slate-400 block font-medium">Review 1 Baseline</span>
+            <span class="text-xs font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-3 py-1 rounded-full inline-block mt-1">
+              Field Study Verified
+            </span>
+          </div>
+        </div>
+
+        <!-- 6 Headline Indicators from Report -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center">
+          <div class="p-3.5 rounded-2xl bg-navy-900/80 border border-navy-800">
+            <span class="text-[10px] uppercase font-bold text-slate-400 block tracking-wide">Expense Tracking</span>
+            <strong class="text-xl sm:text-2xl font-black text-rose-400 block mt-1">0.0%</strong>
+            <span class="text-[10px] text-slate-400">Regularly track expenses</span>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-navy-900/80 border border-navy-800">
+            <span class="text-[10px] uppercase font-bold text-slate-400 block tracking-wide">Month-End Shortage</span>
+            <strong class="text-xl sm:text-2xl font-black text-amber-400 block mt-1">59.0%</strong>
+            <span class="text-[10px] text-slate-400">Run out before month end</span>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-navy-900/80 border border-navy-800">
+            <span class="text-[10px] uppercase font-bold text-slate-400 block tracking-wide">Overspending</span>
+            <strong class="text-xl sm:text-2xl font-black text-rose-400 block mt-1">65.0%</strong>
+            <span class="text-[10px] text-slate-400">Spend more than planned</span>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-navy-900/80 border border-navy-800">
+            <span class="text-[10px] uppercase font-bold text-slate-400 block tracking-wide">Saving Struggle</span>
+            <strong class="text-xl sm:text-2xl font-black text-amber-400 block mt-1">75.4%</strong>
+            <span class="text-[10px] text-slate-400">Find saving difficult/neutral</span>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-navy-900/80 border border-navy-800">
+            <span class="text-[10px] uppercase font-bold text-slate-400 block tracking-wide">Digital Impulse</span>
+            <strong class="text-xl sm:text-2xl font-black text-teal-400 block mt-1">52.5%</strong>
+            <span class="text-[10px] text-slate-400">Online offers drive spending</span>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-navy-900/80 border border-navy-800">
+            <span class="text-[10px] uppercase font-bold text-slate-400 block tracking-wide">Emergency Rely</span>
+            <strong class="text-xl sm:text-2xl font-black text-emerald-400 block mt-1">60.7%</strong>
+            <span class="text-[10px] text-slate-400">Depend on family for ₹5K</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Demographic Filter Bar Card -->
       <div class="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200 mb-8">
         <div class="flex items-center justify-between gap-4 mb-4">

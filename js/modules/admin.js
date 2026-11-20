@@ -6,13 +6,16 @@
 
 import { state } from './state.js';
 import { showToast } from './router.js';
+import { supabaseService } from './supabaseService.js';
+import { openSupabaseConfigModal } from './auth.js';
 
 let isAdminAuthenticated = false;
 
 export function renderAdminDashboard(container) {
   if (!container) return;
 
-  if (!isAdminAuthenticated) {
+  const isRoleAuth = state.currentUser && (state.currentUser.role === 'researcher' || state.currentUser.role === 'admin');
+  if (!isAdminAuthenticated && !isRoleAuth) {
     renderAdminLogin(container);
     return;
   }
@@ -28,14 +31,16 @@ export function renderAdminDashboard(container) {
   const avgInsurance = Math.round(dataset.reduce((acc, r) => acc + (r.insurance_score || 0), 0) / (total || 1));
 
   const recentRows = dataset.slice(0, 15);
+  const isCloud = supabaseService.isConfigured();
+  const dbStatus = supabaseService.getStatus();
 
   const html = `
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
       <!-- Admin Top Bar -->
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <div class="inline-flex items-center gap-2 px-3 py-1 bg-amber-100 text-amber-900 rounded-full text-xs font-semibold uppercase tracking-wider mb-2">
-            <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> Admin Control Panel
+            <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> Admin & Research Control Panel
           </div>
           <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Research Data Repository</h1>
           <p class="text-slate-600 text-xs sm:text-sm mt-1">
@@ -52,6 +57,39 @@ export function renderAdminDashboard(container) {
           </button>
           <button id="btn-admin-logout" type="button" class="inline-flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold transition">
             <i data-lucide="log-out" class="w-4 h-4"></i> Logout
+          </button>
+        </div>
+      </div>
+
+      <!-- Cloud Database Integration Banner -->
+      <div class="p-4 rounded-2xl mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+        isCloud ? 'bg-emerald-50 border border-emerald-200 text-emerald-950' : 'bg-slate-100 border border-slate-200 text-slate-800'
+      }">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl ${isCloud ? 'bg-emerald-600 text-white' : 'bg-slate-300 text-slate-700'} flex items-center justify-center">
+            <i data-lucide="database" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <strong class="text-xs sm:text-sm font-bold">
+                ${isCloud ? 'Supabase PostgreSQL Cloud Active' : 'Local Storage Mode (Standby)'}
+              </strong>
+              <span class="w-2 h-2 rounded-full ${isCloud ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}"></span>
+            </div>
+            <p class="text-[11px] text-slate-600">
+              ${isCloud ? `Connected to ${dbStatus.url}` : 'Surveys are persisting to browser encrypted storage. Connect Supabase for remote PostgreSQL sync.'}
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          ${isCloud ? `
+            <button id="btn-fetch-cloud" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition">
+              <i data-lucide="cloud-download" class="w-3.5 h-3.5"></i> Fetch Cloud Records
+            </button>
+          ` : ''}
+          <button id="btn-admin-db-settings" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition">
+            <i data-lucide="settings" class="w-3.5 h-3.5"></i> Database Settings
           </button>
         </div>
       </div>
@@ -142,6 +180,34 @@ export function renderAdminDashboard(container) {
 
   container.innerHTML = html;
   if (window.lucide) window.lucide.createIcons();
+
+  // Supabase Database Settings
+  container.querySelector('#btn-admin-db-settings')?.addEventListener('click', () => {
+    openSupabaseConfigModal();
+  });
+
+  // Fetch from Supabase Cloud
+  container.querySelector('#btn-fetch-cloud')?.addEventListener('click', async () => {
+    const fetchBtn = container.querySelector('#btn-fetch-cloud');
+    if (fetchBtn) fetchBtn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Fetching...`;
+    if (window.lucide) window.lucide.createIcons();
+
+    const res = await supabaseService.fetchSurveyResponses(50);
+    if (res.success && res.data?.length) {
+      // Merge unique cloud records
+      res.data.forEach(cloudRow => {
+        if (!state.researchData.some(r => r.id === cloudRow.id)) {
+          state.researchData.unshift(cloudRow);
+        }
+      });
+      state.saveToStorage('finsmart_research_data_v1', state.researchData);
+      renderAdminDashboard(container);
+      showToast(`Fetched ${res.data.length} records from Supabase PostgreSQL!`, 'success');
+    } else {
+      renderAdminDashboard(container);
+      showToast('No new remote records found in Supabase.', 'info');
+    }
+  });
 
   // Attach CSV Export
   container.querySelector('#btn-export-csv')?.addEventListener('click', () => {

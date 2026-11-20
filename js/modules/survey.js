@@ -531,6 +531,7 @@ function submitSurvey() {
   const scoreResults = calculateSurveyScores(answers);
   const profile = {
     demographics,
+    answers,
     ...scoreResults
   };
 

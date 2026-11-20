@@ -13,9 +13,16 @@ import { renderAiQuizPage } from './aiQuiz.js';
 import { openApiKeyModal } from './apiKeyModal.js';
 import { renderInsightsDashboard } from './insights.js';
 import { renderAdminDashboard } from './admin.js';
+import { renderLoginPage, renderRegisterPage, renderProfilePage, openSupabaseConfigModal } from './auth.js';
 
 export function initRouter() {
   window.addEventListener('hashchange', handleRouteChange);
+  
+  // Attach DB settings button listener
+  document.getElementById('btn-nav-db')?.addEventListener('click', () => {
+    openSupabaseConfigModal();
+  });
+
   handleRouteChange();
 }
 
@@ -77,6 +84,18 @@ function handleRouteChange() {
     case 'admin':
       renderAdminDashboard(appMain);
       break;
+    case 'login':
+      renderLoginPage(appMain);
+      break;
+    case 'register':
+      renderRegisterPage(appMain);
+      break;
+    case 'profile':
+      renderProfilePage(appMain);
+      break;
+    case 'supabase-settings':
+      openSupabaseConfigModal();
+      break;
     default:
       renderHomePage(appMain);
       break;
@@ -104,6 +123,42 @@ function updateNavbarActive(activeRoute) {
       myScoreBtn.classList.remove('hidden');
     } else {
       myScoreBtn.classList.add('hidden');
+    }
+  }
+
+  // Update Auth controls in Navbar
+  const user = state.currentUser;
+  const loginNavBtn = document.getElementById('nav-btn-login');
+  const userNavMenu = document.getElementById('nav-user-menu');
+  const userAvatar = document.getElementById('nav-user-avatar');
+  const userName = document.getElementById('nav-user-name');
+  const mobileNavLogin = document.getElementById('mobile-nav-login');
+
+  if (user) {
+    if (loginNavBtn) loginNavBtn.classList.add('hidden');
+    if (userNavMenu) userNavMenu.classList.remove('hidden');
+    if (userName) userName.textContent = (user.fullName || user.email).split(' ')[0];
+    if (userAvatar) userAvatar.textContent = (user.fullName || user.email || 'U')[0].toUpperCase();
+    if (mobileNavLogin) {
+      mobileNavLogin.innerHTML = `
+        <span class="flex items-center gap-2">
+          <i data-lucide="user-check" class="w-4 h-4 text-emerald-600"></i> My Profile (${(user.fullName || user.email).split(' ')[0]})
+        </span>
+        <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-600 text-white font-black uppercase">Active</span>
+      `;
+      mobileNavLogin.setAttribute('href', '#profile');
+    }
+  } else {
+    if (loginNavBtn) loginNavBtn.classList.remove('hidden');
+    if (userNavMenu) userNavMenu.classList.add('hidden');
+    if (mobileNavLogin) {
+      mobileNavLogin.innerHTML = `
+        <span class="flex items-center gap-2">
+          <i data-lucide="user" class="w-4 h-4 text-emerald-600"></i> Account / Sign In
+        </span>
+        <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-600 text-white font-black uppercase">Auth</span>
+      `;
+      mobileNavLogin.setAttribute('href', '#login');
     }
   }
 }
@@ -543,6 +598,54 @@ function renderAboutPage(container) {
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Academic Project & Copyright Information -->
+      <div class="bg-gradient-to-r from-navy-950 via-navy-900 to-navy-950 text-white rounded-3xl p-6 sm:p-10 shadow-xl mb-14 border border-navy-800">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-6 border-b border-navy-800">
+          <div>
+            <div class="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 text-emerald-400 rounded-full text-xs font-semibold uppercase tracking-wider mb-2">
+              <i data-lucide="award" class="w-3.5 h-3.5"></i> Academic Copyright & Institutional Origin
+            </div>
+            <h3 class="text-2xl font-bold tracking-tight text-white">Community Engagement Project (CEP)</h3>
+            <p class="text-xs sm:text-sm text-slate-300 mt-1">
+              "Assessment of Financial Literacy Among Young Adults Aged 18–22"
+            </p>
+          </div>
+          <div class="text-left md:text-right">
+            <span class="text-xs text-slate-400 block font-medium">Institution</span>
+            <span class="text-sm font-bold text-white block mt-0.5">Trinity College of Engineering and Research, Pune</span>
+            <span class="text-xs text-emerald-400">Department of Computer Engineering • Second Year</span>
+          </div>
+        </div>
+
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">Student Project Team & Investigators</h4>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div class="p-3.5 rounded-2xl bg-navy-900 border border-navy-800">
+            <span class="text-[10px] text-emerald-400 font-bold block uppercase tracking-wider">Roll No: A-02</span>
+            <strong class="text-sm font-bold text-white block mt-0.5">Ayush Singh</strong>
+            <span class="text-[11px] text-slate-400">Computer Engineering</span>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-navy-900 border border-navy-800">
+            <span class="text-[10px] text-emerald-400 font-bold block uppercase tracking-wider">Roll No: A-09</span>
+            <strong class="text-sm font-bold text-white block mt-0.5">Yashraj Bhagvat</strong>
+            <span class="text-[11px] text-slate-400">Computer Engineering</span>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-navy-900 border border-navy-800">
+            <span class="text-[10px] text-emerald-400 font-bold block uppercase tracking-wider">Roll No: A-12</span>
+            <strong class="text-sm font-bold text-white block mt-0.5">Swayam Bidimani</strong>
+            <span class="text-[11px] text-slate-400">Computer Engineering</span>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-navy-900 border border-navy-800">
+            <span class="text-[10px] text-emerald-400 font-bold block uppercase tracking-wider">Roll No: A-14</span>
+            <strong class="text-sm font-bold text-white block mt-0.5">Darshan Chaudhari</strong>
+            <span class="text-[11px] text-slate-400">Computer Engineering</span>
+          </div>
+        </div>
+
+        <p class="text-xs text-slate-400 leading-relaxed">
+          Developed as part of Review 1 (Problem Identification & Platform Architecture) to deliver targeted financial education interventions, diagnostic assessments, and empirical research repositories for emerging adults across India.
+        </p>
       </div>
     </div>
   `;

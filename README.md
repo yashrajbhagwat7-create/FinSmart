@@ -88,10 +88,37 @@ FinSmart is a modern, responsive, fintech-grade web application built to assess,
 - **RFC-4180 CSV Export:** Download the full anonymous research dataset for statistical analysis in Excel, Python, or R.
 - Ability to re-seed or restore baseline research data.
 
-### 8. UX, Accessibility & Design
+### 8. User Authentication, Profiles & Role-Based Access
+- **Secure Onboarding & Authentication:** Sign In (`#login`) and Registration (`#register`) with real-time password complexity strength indicator.
+- **Role-Based Access Control (RBAC):** Supports *Learners* (Students & Young Adults), *Salaried Professionals*, and *Educators / Academic Researchers*.
+- **Security-First Architecture:** Web Crypto API SHA-256 password hashing with unique salts; zero transmission of sensitive credentials.
+- **User Profile Dashboard (`#profile`):** Personalized account management displaying active assessment scores, top strengths, growth focus areas, and database synchronization status.
+
+### 9. Supabase PostgreSQL Cloud Database Integration
+- **Cloud Database Ready:** First-class Supabase PostgreSQL integration for survey data collection and persistent analytics.
+- **SQL Schema Provided:** Ready-to-run `supabase_schema.sql` defining `profiles`, `survey_responses`, `quiz_attempts`, and `learning_progress` tables with Row Level Security (RLS) policies.
+- **Graceful Fallback:** If Supabase credentials are not yet entered, seamlessly functions in high-performance local storage mode; automatically syncs when connected.
+- **In-App Database Settings Modal:** Configure Supabase Project URL and Anon API key anytime with real-time connection ping.
+
+### 10. UX, Accessibility & Design
 - Clean fintech aesthetic: Dark Navy (`#0B192C`, `#07101C`), White, Emerald Green (`#10B981`), and Amber accents.
 - Fully responsive on Desktop, Tablet, and Mobile with collapsible navigation drawer.
 - Accessible color contrast, touch-friendly targets, and toast feedback notifications.
+
+---
+
+## 🏛️ Academic Research Origin & Copyright Attribution
+
+FinSmart is developed and registered as part of the **Community Engagement Project (CEP) Review 1** study titled:
+*“Assessment of Financial Literacy Among Young Adults Aged 18–22”*
+
+- **Institution:** Department of Computer Engineering, Trinity College of Engineering and Research, Pune (Second Year).
+- **Student Investigators & Authors:**
+  - **Ayush Singh** (Roll No. A-02)
+  - **Yashraj Bhagvat** (Roll No. A-09)
+  - **Swayam Bidimani** (Roll No. A-12)
+  - **Darshan Chaudhari** (Roll No. A-14)
+- **Primary Field Research:** Validated empirical baseline of 61 young adults aged 18–22 in Pune documenting urgent gaps in expense tracking (0% regular), month-end shortages (59%), and family emergency dependency (60.7%).
 
 ---
 
@@ -119,15 +146,22 @@ Open `index.html` directly in any modern browser (Chrome, Edge, Firefox, Safari)
 
 ---
 
+## 🌐 Live Deployments
+
+- **Live Production Web App (Vercel):** [https://fin-smart-rho.vercel.app](https://fin-smart-rho.vercel.app)
+- **GitHub Repository:** [https://github.com/yashrajbhagwat7-create/FinSmart](https://github.com/yashrajbhagwat7-create/FinSmart)
+
+---
+
 ## 🚀 Deploy on Vercel
 
 FinSmart is optimized for zero-configuration, instant deployment on Vercel.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FSwayam07-afk%2FFinSmart)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fyashrajbhagwat7-create%2FFinSmart)
 
 ### Option A: 1-Click Dashboard Import (Recommended)
 1. Go to [vercel.com/new](https://vercel.com/new).
-2. Connect your GitHub account and import **`Swayam07-afk/FinSmart`**.
+2. Connect your GitHub account and import **`yashrajbhagwat7-create/FinSmart`**.
 3. Keep the default settings (Framework preset: `Other`, Root directory: `./`).
 4. Click **Deploy**. Your site will be live on an HTTPS `.vercel.app` domain in ~15 seconds.
 
@@ -144,17 +178,20 @@ vercel
 ```
 finsmart/
 ├── index.html                  # Single-page application shell
-├── README.md                   # Documentation and quick start guide
+├── supabase_schema.sql         # Supabase PostgreSQL schema, tables & RLS policies
+├── README.md                   # Documentation, research attribution & quick start
 ├── css/
 │   └── styles.css              # Custom styling, print sheets, and animations
 └── js/
     ├── app.js                  # Main orchestrator & lifecycle events
     ├── data/
-    │   ├── questions.js        # 25 survey questions across 5 pillars
+    │   ├── questions.js        # Diagnostic survey questions across core pillars
     │   ├── learnData.js        # 10 comprehensive educational topics
     │   ├── quizData.js         # 10 interactive quiz questions
-    │   └── sampleResearchData.js # 1,420+ synthetic research respondents
+    │   └── sampleResearchData.js # Synthetic respondents + Pune CEP cohort (N=61)
     └── modules/
+        ├── auth.js             # User login, registration & profile management
+        ├── supabaseService.js  # Supabase cloud DB, auth & local fallback
         ├── state.js            # Central state & localStorage manager
         ├── router.js           # Client-side hash routing & static views
         ├── survey.js           # Multi-step survey wizard controller
@@ -163,8 +200,11 @@ finsmart/
         ├── learn.js            # Learning hub & topic modal dialogs
         ├── calculators.js      # 5 financial calculators with Chart.js
         ├── quiz.js             # 10-question quiz controller
-        ├── insights.js         # Research dashboard with 6 dynamic charts
-        └── admin.js            # Passcode-protected admin & CSV exporter
+        ├── aiQuiz.js           # Real-time Gemini AI quiz generator
+        ├── apiKeyModal.js      # Google Gemini API key dialog
+        ├── geminiService.js    # Gemini API client & schema validator
+        ├── insights.js         # Research dashboard with 6 dynamic charts & CEP spotlight
+        └── admin.js            # Passcode-protected admin, DB sync & CSV exporter
 ```
 
 ---

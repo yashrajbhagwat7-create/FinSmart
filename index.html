@@ -41,6 +41,9 @@
   <!-- Canvas Confetti for celebrations -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 
+  <!-- Supabase JS Client v2 for Cloud Database & Auth -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <!-- Custom Styles -->
   <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -114,6 +117,36 @@
             <span id="gemini-key-label" class="hidden sm:inline">Gemini AI</span>
           </button>
 
+          <!-- Supabase DB Settings Button -->
+          <button 
+            id="btn-nav-db" 
+            type="button" 
+            class="hidden md:inline-flex items-center gap-1.5 px-2.5 py-2 rounded-xl border border-slate-200 hover:border-emerald-400 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-xs transition"
+            title="Supabase Database Settings">
+            <i data-lucide="database" class="w-3.5 h-3.5 text-emerald-600"></i>
+            <span class="hidden xl:inline text-slate-600">DB</span>
+          </button>
+
+          <!-- User Authentication Button / User Profile -->
+          <a 
+            href="#login" 
+            id="nav-btn-login" 
+            class="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-xl border border-slate-300 hover:border-emerald-500 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-xs transition">
+            <i data-lucide="user" class="w-3.5 h-3.5 text-emerald-700"></i>
+            <span>Sign In</span>
+          </a>
+
+          <!-- Authenticated User Menu (Shown when logged in) -->
+          <a 
+            href="#profile" 
+            id="nav-user-menu" 
+            class="hidden inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-900 font-bold text-xs transition">
+            <div id="nav-user-avatar" class="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-[10px] font-black">
+              U
+            </div>
+            <span id="nav-user-name" class="hidden sm:inline">User</span>
+          </a>
+
           <a href="#survey" class="hidden sm:inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-600/25 hover:shadow-emerald-600/35 transition transform hover:-translate-y-0.5">
             <i data-lucide="sparkles" class="w-4 h-4"></i> Take Survey
           </a>
@@ -132,10 +165,17 @@
       <a href="#home" class="block px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50">
         Home
       </a>
+      <!-- Mobile Auth Action -->
+      <a href="#login" id="mobile-nav-login" class="flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold text-emerald-800 bg-emerald-50/80">
+        <span class="flex items-center gap-2">
+          <i data-lucide="user" class="w-4 h-4 text-emerald-600"></i> Account / Sign In
+        </span>
+        <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-600 text-white font-black uppercase">Auth</span>
+      </a>
       <a href="#about" class="block px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50">
         About Financial Literacy
       </a>
-      <a href="#survey" class="block px-3 py-2.5 rounded-xl text-sm font-bold text-emerald-800 bg-emerald-50/80">
+      <a href="#survey" class="block px-3 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50">
         Take the Survey
       </a>
       <a href="#results" class="block px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50">
@@ -155,6 +195,13 @@
           <i data-lucide="sparkles" class="w-4 h-4 text-emerald-600"></i> AI Quiz Generator
         </span>
         <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-600 text-white font-black uppercase">Gemini</span>
+      </a>
+      <!-- Mobile Supabase Settings -->
+      <a href="#supabase-settings" class="flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        <span class="flex items-center gap-2">
+          <i data-lucide="database" class="w-4 h-4 text-emerald-600"></i> Supabase Database Settings
+        </span>
+        <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold uppercase">DB</span>
       </a>
       <!-- Mobile Gemini API Key Action -->
       <button 
@@ -227,6 +274,8 @@
           <ul class="space-y-2">
             <li><a href="#insights" class="hover:text-emerald-400 transition">Survey Insights & Analytics</a></li>
             <li><a href="#quiz" class="hover:text-emerald-400 transition">Standard Money Quiz</a></li>
+            <li><a href="#login" class="hover:text-emerald-400 transition flex items-center gap-1.5"><i data-lucide="user" class="w-3.5 h-3.5 text-emerald-400"></i> Account / Sign In</a></li>
+            <li><a href="#supabase-settings" id="footer-btn-db" class="hover:text-emerald-400 transition flex items-center gap-1.5"><i data-lucide="database" class="w-3.5 h-3.5 text-emerald-400"></i> Supabase Database Settings</a></li>
             <li><a href="#gemini-key" class="hover:text-emerald-400 transition flex items-center gap-1.5"><i data-lucide="key" class="w-3.5 h-3.5 text-emerald-400"></i> Gemini AI Settings</a></li>
             <li><a href="#privacy" class="hover:text-emerald-400 transition">Privacy & Data Ethics</a></li>
             <li><a href="#admin" class="hover:text-emerald-400 transition">Admin / Researcher Portal</a></li>
@@ -235,13 +284,26 @@
 
       </div>
 
+      <!-- Institutional Attribution & Copyright Notice for Copyright Filing -->
+      <div class="py-6 border-t border-navy-900/80 text-[11px] text-slate-400 space-y-2">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-2">
+          <p class="font-medium text-slate-300">
+            <strong>Academic Project & Copyright:</strong> Community Engagement Project (CEP) Review 1 — Financial Literacy Among Young Adults (Aged 18–22).
+          </p>
+          <span class="text-emerald-400 font-semibold">Trinity College of Engineering and Research, Pune</span>
+        </div>
+        <p class="text-slate-500">
+          <strong>Authors & Investigators:</strong> Ayush Singh (A-02) • Yashraj Bhagvat (A-09) • Swayam Bidimani (A-12) • Darshan Chaudhari (A-14) — Department of Computer Engineering (Second Year).
+        </p>
+      </div>
+
       <!-- Legal Disclaimer & Copyright -->
-      <div class="pt-8 border-t border-navy-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-slate-500 text-[11px]">
+      <div class="pt-6 border-t border-navy-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-slate-500 text-[11px]">
         <p class="text-center sm:text-left leading-relaxed">
           <strong>Educational & Research Disclaimer:</strong> For educational and research purposes only. This platform does not provide personalized financial advice or recommend specific financial products.
         </p>
-        <p class="shrink-0">
-          © 2026 FinSmart Platform. All rights reserved.
+        <p class="shrink-0 font-medium text-slate-400">
+          © 2026 FinSmart Solutions. All rights reserved. Registered Academic Copyright.
         </p>
       </div>
     </div>
